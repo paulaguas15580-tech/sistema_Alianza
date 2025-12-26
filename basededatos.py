@@ -1848,8 +1848,6 @@ def abrir_modulo_microcredito():
     nav_frame = ctk.CTkFrame(win_micro, fg_color=COLOR_FONDO, height=40)
     nav_frame.pack(side='top', fill='x', pady=(5,0))
     
-    # Logo removed from navigation frame
-
     ctk.CTkButton(nav_frame, text="Volver al Menú", command=win_micro.destroy, 
                   fg_color=COLOR_FONDO, text_color="#d9534f", hover_color="#EEE8AA", 
                   font=('Arial', 12, 'bold')).pack(side='right', padx=10)

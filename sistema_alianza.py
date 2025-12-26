@@ -59,18 +59,28 @@ class LoginView(ft.Container):
         )
         
         super().__init__(
-            content=ft.Container(
-                content=content_col,
-                bgcolor="white",
-                padding=40,
-                border_radius=20,
-                width=400,
-                height=550,
-                border=ft.border.all(1, "#DDDDDD"),
-                shadow=ft.BoxShadow(blur_radius=15, color=ft.Colors.with_opacity(0.1, "black"))
-            ),
-            bgcolor=COLOR_FONDO,
-            alignment=ft.alignment.center,
+            content=ft.Stack([
+                ft.Image(
+                    src="background.jpg",
+                    width=float('inf'),
+                    height=float('inf'),
+                    fit=ft.ImageFit.COVER,
+                ),
+                ft.Container(
+                    content=ft.Container(
+                        content=content_col,
+                        bgcolor="white",
+                        padding=40,
+                        border_radius=20,
+                        width=400,
+                        height=550,
+                        border=ft.border.all(1, "#DDDDDD"),
+                        shadow=ft.BoxShadow(blur_radius=15, color=ft.Colors.with_opacity(0.1, "black"))
+                    ),
+                    alignment=ft.alignment.center,
+                    expand=True
+                )
+            ]),
             expand=True
         )
 
@@ -134,9 +144,20 @@ class MenuView(ft.Container):
         )
         
         super().__init__(
-            content=content_col,
-            bgcolor=COLOR_FONDO,
-            padding=40,
+            content=ft.Stack([
+                ft.Image(
+                    src="background.jpg",
+                    width=float('inf'),
+                    height=float('inf'),
+                    fit=ft.ImageFit.COVER,
+                ),
+                ft.Container(
+                    content=content_col,
+                    padding=40,
+                    bgcolor=ft.Colors.with_opacity(0.85, "white"),
+                    expand=True
+                )
+            ]),
             expand=True
         )
 

@@ -1314,20 +1314,11 @@ def abrir_menu_principal(app_root=None):
     # Cargar fondo para botones
     try:
         btn_bg_img = Image.open("btn_bg.jpg")
-        ANCHO_BTN = 250
+        ANCHO_BTN = 180
         ALTO_BTN = 70
         btn_img = ctk.CTkImage(light_image=btn_bg_img, dark_image=btn_bg_img, size=(ANCHO_BTN, ALTO_BTN))
-        
-        # Cargar icono para Rehabilitación
-        try:
-            icon_raw = Image.open("rehabilitacion_icon.png")
-            # Aumentado un 40% (de 30 a 42)
-            icon_img = ctk.CTkImage(light_image=icon_raw, dark_image=icon_raw, size=(42, 42))
-        except:
-            icon_img = None
     except Exception as e:
         btn_img = None
-        icon_img = None
 
     row_idx = 2
     col_idx = 0
@@ -1355,14 +1346,6 @@ def abrir_menu_principal(app_root=None):
         )
         btn.grid(row=row_idx, column=col_idx, padx=20, pady=15)
         btn.lift() # Asegura que esté sobre el fondo
-        
-        # Si es Rehabilitación, poner el icono a la izquierda
-        if icon_img and "Rehabilitación" in texto:
-            icon_lbl = ctk.CTkLabel(btn, image=icon_img, text="", fg_color="transparent")
-            # Movido más a la derecha (de 15 a 25)
-            icon_lbl.place(x=25, rely=0.5, anchor="w")
-            # Ajustar padding del texto para que no choque con el icono más grande
-            btn.configure(text=f"         {texto}")
         
         # Binds para que el Label actúe como botón
         btn.bind("<Button-1>", lambda e, f=funcion: f())

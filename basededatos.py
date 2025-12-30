@@ -3171,6 +3171,42 @@ def abrir_modulo_caja():
             shutil.copy(ruta, ruta_dest)
             var_buro_ruta.set(ruta_dest)
             messagebox.showinfo("Éxito", "Archivo adjuntado correctamente.")
+            validar_datos_caja()
+
+    def validar_datos_caja(show_error=False):
+        # Campos básicos obligatorios
+        basic_fields = [
+            (var_cedula, "Cédula"),
+            (var_ruc, "RUC"),
+            (var_nombres, "Nombres Completos"),
+            (var_asesor, "Nombre del Asesor")
+        ]
+        
+        for var, field_name in basic_fields:
+            if not var.get().strip():
+                if show_error:
+                    messagebox.showerror("Error", f"Debe completar el campo '{field_name}' antes de continuar.")
+                return False
+            
+        # Validación de Buró
+        if var_buro.get() == "Sí":
+            if not var_buro_ruta.get():
+                btn_adjuntar.configure(fg_color="#cc0000", text="⚠️ Subir Buró (OBLIGATORIO)", text_color="white")
+                if show_error:
+                    messagebox.showerror("Error", "Es obligatorio subir el archivo de Buró de Crédito para continuar")
+                return False
+            else:
+                btn_adjuntar.configure(fg_color="#28a745", text="✅ Buró Cargado", text_color="white")
+        else:
+            btn_adjuntar.configure(fg_color="grey", text="📎 Adjuntar Buró (PDF/IMG)")
+            
+        return True
+
+    def on_tab_change():
+        if nb.get() == "Contrato":
+            if not validar_datos_caja(show_error=True):
+                # Pequeño delay para que el set ocurra después de que termine el evento actual si es necesario
+                win.after(100, lambda: nb.set("Información"))
 
     def cargar_datos_caja(cedula):
         if not cedula:
@@ -3306,9 +3342,10 @@ def abrir_modulo_caja():
 
     def toggle_buro_btn(*args):
         if var_buro.get() == "Sí":
-            btn_adjuntar.configure(state="normal", fg_color="#1860C3")
+            btn_adjuntar.configure(state="normal")
         else:
-            btn_adjuntar.configure(state="disabled", fg_color="grey")
+            btn_adjuntar.configure(state="disabled", fg_color="grey", text="📎 Adjuntar Buró (PDF/IMG)")
+        validar_datos_caja()
 
     def imprimir_contrato():
         messagebox.showinfo("Imprimir", "Función de impresión preparada. Pendiente de plantilla.")
@@ -3320,7 +3357,14 @@ def abrir_modulo_caja():
 
     # UI
     win, frame_info, nb = crear_modulo_generico("Caja", tab_name="Información", search_callback=cargar_datos_caja, show_search=False)
+    nb.configure(command=on_tab_change)
     actualizar_fecha()
+    
+    var_cedula.trace_add("write", lambda *a: validar_datos_caja())
+    var_ruc.trace_add("write", lambda *a: validar_datos_caja())
+    var_nombres.trace_add("write", lambda *a: validar_datos_caja())
+    var_asesor.trace_add("write", lambda *a: validar_datos_caja())
+    var_buro.trace_add("write", lambda *a: validar_datos_caja())
 
     # --- PESTAÑA INFORMACIÓN ---
     container_info = ctk.CTkFrame(frame_info, fg_color="white", corner_radius=15, border_width=1, border_color="#CCCCCC")
@@ -3331,17 +3375,17 @@ def abrir_modulo_caja():
     
     row = 0
     ctk.CTkLabel(grid_info, text="Fecha y Hora:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    ctk.CTkEntry(grid_info, textvariable=var_fecha_hora, width=250, state='readonly', fg_color="#F9F9F9", text_color="black").grid(row=row, column=1, padx=20, pady=10)
+    ctk.CTkEntry(grid_info, textvariable=var_fecha_hora, width=350, state='readonly', fg_color="#F9F9F9", text_color="black").grid(row=row, column=1, padx=20, pady=10)
     
     row += 1
     ctk.CTkLabel(grid_info, text="Cédula:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    e_ced = ctk.CTkEntry(grid_info, textvariable=var_cedula, width=250, fg_color="white", text_color="black")
+    e_ced = ctk.CTkEntry(grid_info, textvariable=var_cedula, width=350, fg_color="white", text_color="black")
     e_ced.grid(row=row, column=1, padx=20, pady=10)
     e_ced.bind('<KeyRelease>', buscar_cliente_caja)
     
     row += 1
     ctk.CTkLabel(grid_info, text="RUC:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    ctk.CTkEntry(grid_info, textvariable=var_ruc, width=250, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=10)
+    ctk.CTkEntry(grid_info, textvariable=var_ruc, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=10)
     
     row += 1
     ctk.CTkLabel(grid_info, text="Nombres Completos:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
@@ -3372,15 +3416,15 @@ def abrir_modulo_caja():
     
     row = 0
     ctk.CTkLabel(grid_con, text="Fecha y Hora:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_fecha_hora, width=250, state='readonly', fg_color="#F9F9F9", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    ctk.CTkEntry(grid_con, textvariable=var_fecha_hora, width=350, state='readonly', fg_color="#F9F9F9", text_color="black").grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="Cédula:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_cedula, width=250, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    ctk.CTkEntry(grid_con, textvariable=var_cedula, width=350, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="RUC:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_ruc, width=250, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    ctk.CTkEntry(grid_con, textvariable=var_ruc, width=350, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="Nombres y Apellidos:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
@@ -3396,7 +3440,7 @@ def abrir_modulo_caja():
     
     row += 1
     ctk.CTkLabel(grid_con, text="Teléfono:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_telefono, width=250, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    ctk.CTkEntry(grid_con, textvariable=var_telefono, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="Estado Civil:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
@@ -3404,14 +3448,14 @@ def abrir_modulo_caja():
 
     row += 1
     ctk.CTkLabel(grid_con, text="Valor de Apertura ($):", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_val_ape = ctk.CTkEntry(grid_con, textvariable=var_valor_apertura, width=150, fg_color="white", text_color="black")
+    e_val_ape = ctk.CTkEntry(grid_con, textvariable=var_valor_apertura, width=350, fg_color="white", text_color="black")
     e_val_ape.grid(row=row, column=1, sticky='w', padx=20, pady=5)
     e_val_ape.bind('<FocusOut>', on_focus_out_moneda)
     e_val_ape.bind('<FocusIn>', on_focus_in_moneda)
     
     row += 1
     ctk.CTkLabel(grid_con, text="No. de Apertura:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_num_apertura, width=150, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, sticky='w', padx=20, pady=5)
+    ctk.CTkEntry(grid_con, textvariable=var_num_apertura, width=350, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkButton(container_con, text="🖨️ IMPRIMIR CONTRATO", command=imprimir_contrato, font=('Arial', 14, 'bold'), height=45, fg_color="#1860C3").pack(pady=20)

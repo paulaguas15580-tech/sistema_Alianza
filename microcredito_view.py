@@ -89,7 +89,12 @@ class MicrocreditoView(ft.Column):
                 ft.Dropdown(label="Vivienda", options=[ft.dropdown.Option("Propia"), ft.dropdown.Option("Arrendada"), ft.dropdown.Option("Familiar")], border_radius=8),
                 ft.TextField(label="Cargas", border_radius=8),
                 ft.TextField(label="Patrimonio (Vehiculo, Casa, Terreno...)", border_radius=8),
-                ft.Dropdown(label="Responsable", options=[ft.dropdown.Option("Si"), ft.dropdown.Option("No")], border_radius=8)
+                ft.Dropdown(label="Responsable", options=[ft.dropdown.Option("Si"), ft.dropdown.Option("No")], border_radius=8),
+                # New Fields
+                ft.TextField(label="Fecha Llamada", border_radius=8),
+                ft.TextField(label="Hora Llamada", border_radius=8),
+                ft.TextField(label="Nombre Referencia", border_radius=8),
+                ft.TextField(label="Teléfono Referencia", border_radius=8),
             ]
 
         self.ref1_fields = create_ref_fields("Ref 1")
@@ -100,13 +105,17 @@ class MicrocreditoView(ft.Column):
                 ft.Text("Verificación Referencia 1", weight=ft.FontWeight.BOLD, color="#1A237E", size=18),
                 ft.ResponsiveRow([
                     ft.Column([self.ref1_fields[0], self.ref1_fields[1], self.ref1_fields[2], self.ref1_fields[3]], col={"sm": 6}),
-                    ft.Column([self.ref1_fields[4], self.ref1_fields[5], self.ref1_fields[6]], col={"sm": 6})
+                    ft.Column([self.ref1_fields[4], self.ref1_fields[5], self.ref1_fields[6]], col={"sm": 6}),
+                    ft.Column([self.ref1_fields[7], self.ref1_fields[8]], col={"sm": 6}),
+                    ft.Column([self.ref1_fields[9], self.ref1_fields[10]], col={"sm": 6})
                 ]),
                 ft.Divider(height=40),
                 ft.Text("Verificación Referencia 2", weight=ft.FontWeight.BOLD, color="#1A237E", size=18),
                 ft.ResponsiveRow([
                     ft.Column([self.ref2_fields[0], self.ref2_fields[1], self.ref2_fields[2], self.ref2_fields[3]], col={"sm": 6}),
-                    ft.Column([self.ref2_fields[4], self.ref2_fields[5], self.ref2_fields[6]], col={"sm": 6})
+                    ft.Column([self.ref2_fields[4], self.ref2_fields[5], self.ref2_fields[6]], col={"sm": 6}),
+                    ft.Column([self.ref2_fields[7], self.ref2_fields[8]], col={"sm": 6}),
+                    ft.Column([self.ref2_fields[9], self.ref2_fields[10]], col={"sm": 6})
                 ])
             ], scroll=ft.ScrollMode.AUTO), padding=20
         )
@@ -227,14 +236,16 @@ class MicrocreditoView(ft.Column):
                 for i, field in enumerate(self.ref1_fields):
                     key = [
                         'ref1_relacion', 'ref1_tiempo_conocer', 'ref1_direccion', 
-                        'ref1_tipo_vivienda', 'ref1_cargas', 'ref1_patrimonio', 'ref1_responsable'
+                        'ref1_tipo_vivienda', 'ref1_cargas', 'ref1_patrimonio', 'ref1_responsable',
+                        'ref1_fecha', 'ref1_hora', 'ref1_nombre', 'ref1_telefono'
                     ][i]
                     field.value = micro.get(key) or ""
                 # Ref 2
                 for i, field in enumerate(self.ref2_fields):
                     key = [
                         'ref2_relacion', 'ref2_tiempo_conocer', 'ref2_direccion', 
-                        'ref2_tipo_vivienda', 'ref2_cargas', 'ref2_patrimonio', 'ref2_responsable'
+                        'ref2_tipo_vivienda', 'ref2_cargas', 'ref2_patrimonio', 'ref2_responsable',
+                        'ref2_fecha', 'ref2_hora', 'ref2_nombre', 'ref2_telefono'
                     ][i]
                     field.value = micro.get(key) or ""
             else:
@@ -280,6 +291,10 @@ class MicrocreditoView(ft.Column):
             'ref1_cargas': self.ref1_fields[4].value,
             'ref1_patrimonio': self.ref1_fields[5].value,
             'ref1_responsable': self.ref1_fields[6].value,
+            'ref1_fecha': self.ref1_fields[7].value,
+            'ref1_hora': self.ref1_fields[8].value,
+            'ref1_nombre': self.ref1_fields[9].value,
+            'ref1_telefono': self.ref1_fields[10].value,
             # Ref 2
             'ref2_relacion': self.ref2_fields[0].value,
             'ref2_tiempo_conocer': self.ref2_fields[1].value,
@@ -288,9 +303,14 @@ class MicrocreditoView(ft.Column):
             'ref2_cargas': self.ref2_fields[4].value,
             'ref2_patrimonio': self.ref2_fields[5].value,
             'ref2_responsable': self.ref2_fields[6].value,
+            'ref2_fecha': self.ref2_fields[7].value,
+            'ref2_hora': self.ref2_fields[8].value,
+            'ref2_nombre': self.ref2_fields[9].value,
+            'ref2_telefono': self.ref2_fields[10].value,
         }
         
-        ok, msg = db.guardar_microcredito_db(data)
+        user = self.page.session.get("user") or "Sistema"
+        ok, msg = db.guardar_microcredito_db(data, usuario=user)
         self.page.snack_bar = ft.SnackBar(ft.Text(msg), bgcolor="green" if ok else "red")
         self.page.snack_bar.open = True
         self.page.update()

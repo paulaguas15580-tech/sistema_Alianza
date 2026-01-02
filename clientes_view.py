@@ -428,10 +428,11 @@ class ClientesView(ft.Column):
             'valor_apertura': self.val_apertura.value
         }
         
+        user = self.page.session.get("user") or "Sistema"
         if self.edit_mode:
-            ok, msg = db.actualizar_cliente_db(self.current_id, data)
+            ok, msg = db.actualizar_cliente_db(self.current_id, data, usuario=user)
         else:
-            ok, msg = db.guardar_cliente_db(data)
+            ok, msg = db.guardar_cliente_db(data, usuario=user)
             
         if ok:
             self.page.snack_bar = ft.SnackBar(ft.Text("Operación exitosa"), bgcolor="green")
@@ -444,6 +445,8 @@ class ClientesView(ft.Column):
 
     def delete_client(self, row):
         def confirm_delete(e):
+            user = self.page.session.get("user") or "Sistema"
+            # Optional: Add user parameter to eliminate_client_db if auditing deletion is needed
             db.eliminar_cliente_db(row['id'])
             self.cargar_datos()
             self.page.dialog.open = False

@@ -115,6 +115,28 @@ def crear_tablas():
             )
         """)
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Rehabilitacion (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cedula_cliente TEXT UNIQUE NOT NULL,
+                fecha_inicio TEXT,
+                terminos TEXT,
+                resultado TEXT,
+                finalizado INTEGER DEFAULT 0,
+                FOREIGN KEY (cedula_cliente) REFERENCES Clientes(cedula)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS visitas_microcredito (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cedula_cliente TEXT NOT NULL,
+                fecha TEXT,
+                observaciones TEXT,
+                FOREIGN KEY (cedula_cliente) REFERENCES Clientes(cedula)
+            )
+        """)
+
         cursor.execute("SELECT COUNT(*) FROM Usuarios")
         if cursor.fetchone()[0] == 0:
             hash_admin = generar_hash('cyberpol2022') 
@@ -339,6 +361,22 @@ def migrar_db():
                 print("Migrando DB: Agregando columna 'status' a Microcreditos...")
                 cursor.execute("ALTER TABLE Microcreditos ADD COLUMN status TEXT")
                 conn.commit()
+
+            # Verificar nuevas columnas de sub-status
+            if 'sub_status' not in cols_micro:
+                print("Migrando DB: Agregando columna 'sub_status' a Microcreditos...")
+                cursor.execute("ALTER TABLE Microcreditos ADD COLUMN sub_status TEXT")
+                conn.commit()
+            
+            if 'fecha_desembolsado' not in cols_micro:
+                cursor.execute("ALTER TABLE Microcreditos ADD COLUMN fecha_desembolsado TEXT")
+            if 'fecha_negado' not in cols_micro:
+                cursor.execute("ALTER TABLE Microcreditos ADD COLUMN fecha_negado TEXT")
+            if 'fecha_desistimiento' not in cols_micro:
+                cursor.execute("ALTER TABLE Microcreditos ADD COLUMN fecha_desistimiento TEXT")
+            if 'fecha_comite' not in cols_micro:
+                cursor.execute("ALTER TABLE Microcreditos ADD COLUMN fecha_comite TEXT")
+            conn.commit()
             
         # Migración Usuario Admin -> Paul
         cursor.execute("SELECT id FROM Usuarios WHERE usuario='admin'")
@@ -1293,23 +1331,31 @@ def abrir_menu_principal(app_root=None):
     except Exception as e:
         print(f"Error cargando logo: {e}")
     
-    # Definir botones (Texto, Función)
-    botones_lista = [
-        ("Gestión de Clientes", abrir_modulo_clientes),
-        ("Rehabilitación", abrir_modulo_rehabilitacion),
-        ("Microcrédito", abrir_modulo_microcredito),
-        ("Intermediación", abrir_modulo_intermediacion),
-        ("Cartera", abrir_modulo_cartera),
-        ("Documentos", abrir_modulo_informes),
-        ("Consultas", abrir_modulo_consultas),
-        ("Informes", abrir_modulo_informes),
+    # Definir botones (Texto, Función, Fila, Columna)
+    # Fila 1: Gestión de Clientes, Documentos, Consultas
+    # Fila 2: Microcrédito, Rehabilitación, Intermediación
+    # Fila 3: Cartera, Informes, Usuarios
+    # Fila 4: Salir del sistema en la columna 2
+    
+    botones_config = [
+        ("Gestión de Clientes", abrir_modulo_clientes, 2, 0),
+        ("Documentos", abrir_modulo_informes, 2, 1),
+        ("Consultas", abrir_modulo_consultas, 2, 2),
+        
+        ("Microcrédito", abrir_modulo_microcredito, 3, 0),
+        ("Rehabilitación", abrir_modulo_rehabilitacion, 3, 1),
+        ("Intermediación", abrir_modulo_intermediacion, 3, 2),
+        
+        ("Cartera", abrir_modulo_cartera, 4, 0),
+        ("Informes", abrir_modulo_informes, 4, 1),
     ]
     
-    # Filtrar por nivel de acceso
+    # Filtrar por nivel de acceso para Usuarios (Fila 3, Columna 2)
     if NIVEL_ACCESO == 1:
-        botones_lista.append(("Usuarios", abrir_modulo_usuarios))
+        botones_config.append(("Usuarios", abrir_modulo_usuarios, 4, 2))
     
-    botones_lista.append(("Salir Sistema", menu_app.destroy))
+    # Salir del sistema (Fila 4, Columna 2 -> índice 1 en grid 0-indexed)
+    botones_config.append(("Salir Sistema", menu_app.destroy, 5, 1))
 
     # Cargar fondo para botones
     try:
@@ -1318,25 +1364,77 @@ def abrir_menu_principal(app_root=None):
         ALTO_BTN = 70
         btn_img = ctk.CTkImage(light_image=btn_bg_img, dark_image=btn_bg_img, size=(ANCHO_BTN, ALTO_BTN))
         
-        # Cargar icono para Rehabilitación
+        # Cargar iconos para botones
         try:
-            icon_raw = Image.open("rehabilitacion_icon.png")
-            # Aumentado un 40% (de 30 a 42)
-            icon_img = ctk.CTkImage(light_image=icon_raw, dark_image=icon_raw, size=(42, 42))
-        except:
-            icon_img = None
+            # Icono Rehabilitación
+            rehab_raw = Image.open("rehabilitacion_icon.png")
+            rehab_icon = ctk.CTkImage(light_image=rehab_raw, dark_image=rehab_raw, size=(42, 42))
+            
+            # Icono Gestión de Clientes
+            clientes_raw = Image.open("clientes_icon.png")
+            clientes_icon = ctk.CTkImage(light_image=clientes_raw, dark_image=clientes_raw, size=(42, 42))
+            
+            # Icono Microcrédito
+            micro_raw = Image.open("microcredito_icon.png")
+            micro_icon = ctk.CTkImage(light_image=micro_raw, dark_image=micro_raw, size=(42, 42))
+            
+            # Icono Intermediación
+            inter_raw = Image.open("intermediacion_icon.png")
+            inter_icon = ctk.CTkImage(light_image=inter_raw, dark_image=inter_raw, size=(42, 42))
+            
+            # Icono Informes
+            informes_raw = Image.open("informes_icon.png")
+            informes_icon = ctk.CTkImage(light_image=informes_raw, dark_image=informes_raw, size=(42, 42))
+
+            # Icono Consultas
+            consultas_raw = Image.open("consultas_icon.png")
+            consultas_icon = ctk.CTkImage(light_image=consultas_raw, dark_image=consultas_raw, size=(42, 42))
+
+            # Icono Informes y Documentos
+            doc_raw = Image.open("documentos_icon.png")
+            doc_icon = ctk.CTkImage(light_image=doc_raw, dark_image=doc_raw, size=(42, 42))
+
+            # Icono Cartera
+            cartera_raw = Image.open("cartera_icon.png")
+            cartera_icon = ctk.CTkImage(light_image=cartera_raw, dark_image=cartera_raw, size=(42, 42))
+
+            # Icono Usuarios
+            usuarios_raw = Image.open("usuarios_icon.png")
+            usuarios_icon = ctk.CTkImage(light_image=usuarios_raw, dark_image=usuarios_raw, size=(42, 42))
+
+            # Icono Salir
+            salir_raw = Image.open("salir_icon.png")
+            salir_icon = ctk.CTkImage(light_image=salir_raw, dark_image=salir_raw, size=(42, 42))
+        except Exception as e:
+            print(f"Error cargando iconos: {e}")
+            rehab_icon = None
+            clientes_icon = None
+            micro_icon = None
+            inter_icon = None
+            informes_icon = None
+            consultas_icon = None
+            doc_icon = None
+            cartera_icon = None
+            usuarios_icon = None
+            salir_icon = None
     except Exception as e:
         btn_img = None
-        icon_img = None
-
-    row_idx = 2
-    col_idx = 0
+        rehab_icon = None
+        clientes_icon = None
+        micro_icon = None
+        inter_icon = None
+        informes_icon = None
+        consultas_icon = None
+        doc_icon = None
+        cartera_icon = None
+        usuarios_icon = None
+        salir_icon = None
 
     # Configurar pesos de filas para que los botones se centren verticalmente
     for i in range(2, 6):
         menu_app.grid_rowconfigure(i, weight=1)
 
-    for texto, funcion in botones_lista:
+    for texto, funcion, row, col in botones_config:
         # Usamos CTkLabel como botones para que la transparencia sobre la imagen sea perfecta
         btn = ctk.CTkLabel(
             menu_app, 
@@ -1353,30 +1451,46 @@ def abrir_menu_principal(app_root=None):
             corner_radius=15,
             cursor="hand2"
         )
-        btn.grid(row=row_idx, column=col_idx, padx=20, pady=15)
+        btn.grid(row=row, column=col, padx=20, pady=15)
         btn.lift() # Asegura que esté sobre el fondo
         
-        # Si es Rehabilitación, poner el icono a la izquierda
-        if icon_img and "Rehabilitación" in texto:
-            icon_lbl = ctk.CTkLabel(btn, image=icon_img, text="", fg_color="transparent")
-            # Movido más a la derecha (de 15 a 25)
+        # Lógica de Iconos
+        target_icon = None
+        if "Rehabilitación" in texto:
+            target_icon = rehab_icon
+        elif "Gestión de Clientes" in texto:
+            target_icon = clientes_icon
+        elif "Microcrédito" in texto:
+            target_icon = micro_icon
+        elif "Intermediación" in texto:
+            target_icon = inter_icon
+        elif "Informes" in texto:
+            target_icon = informes_icon
+        elif "Consultas" in texto:
+            target_icon = consultas_icon
+        elif "Documentos" in texto:
+            target_icon = doc_icon
+        elif "Cartera" in texto:
+            target_icon = cartera_icon
+        elif "Usuarios" in texto:
+            target_icon = usuarios_icon
+        elif "Salir Sistema" in texto:
+            target_icon = salir_icon
+            
+        if target_icon:
+            icon_lbl = ctk.CTkLabel(btn, image=target_icon, text="", fg_color="transparent")
             icon_lbl.place(x=25, rely=0.5, anchor="w")
-            # Ajustar padding del texto para que no choque con el icono más grande
+            # Ajustar padding del texto
             btn.configure(text=f"         {texto}")
         
         # Binds para que el Label actúe como botón
         btn.bind("<Button-1>", lambda e, f=funcion: f())
         btn.bind("<Enter>", lambda e, b=btn: b.configure(text_color="#FAD390"))
         btn.bind("<Leave>", lambda e, b=btn: b.configure(text_color="white"))
-        
-        col_idx += 1
-        if col_idx > 2:
-            col_idx = 0
-            row_idx += 1
 
     # Footer
     label_footer = ctk.CTkLabel(menu_app, text=f"Usuario: {USUARIO_ACTIVO} | Nivel: {NIVEL_ACCESO}", text_color="#DDDDDD", fg_color="black", corner_radius=5)
-    label_footer.grid(row=row_idx + 1, column=0, columnspan=3, pady=20)
+    label_footer.grid(row=6, column=0, columnspan=3, pady=20)
     
     menu_app.update()
 
@@ -1431,9 +1545,20 @@ def abrir_modulo_clientes():
     top_frame = ctk.CTkFrame(app, fg_color=COLOR_FONDO)
     top_frame.pack(fill='x', padx=10, pady=5)
     
-    f_form = ctk.CTkFrame(top_frame, fg_color="white", border_width=1, border_color="grey")
+    f_form = ctk.CTkFrame(top_frame, fg_color="transparent", border_width=1, border_color="grey")
     f_form.pack(side='left', fill='both', expand=True, padx=5, pady=5)
-    ctk.CTkLabel(top_frame, text="Ficha del Cliente", font=('Arial', 14, 'bold'), text_color=COLOR_TEXTO).place(x=15, y=0) 
+    
+    # --- FONDO GESTIÓN ---
+    try:
+        imagen_fondo_gris = ctk.CTkImage(light_image=Image.open("fondo gestion.jpg"),
+                                         dark_image=Image.open("fondo gestion.jpg"),
+                                         size=(1200, 600))
+        contenedor_ficha = ctk.CTkLabel(master=f_form, image=imagen_fondo_gris, text="")
+        contenedor_ficha.place(x=0, y=0, relwidth=1, relheight=1)
+    except Exception as e:
+        print(f"Error cargando fondo gestion: {e}")
+
+    ctk.CTkLabel(top_frame, text="Ficha del Cliente", font=('Arial', 14, 'bold'), text_color=COLOR_TEXTO, fg_color="transparent").place(x=15, y=0) 
 
     def crear_entry(parent, width=None):
         e = ctk.CTkEntry(parent, fg_color="white", text_color="black", border_color="grey")
@@ -1442,7 +1567,7 @@ def abrir_modulo_clientes():
 
     # --- FORMULARIO CON PESTAÑAS ---
     tab_view = ctk.CTkTabview(f_form, width=1050, height=450, 
-                             fg_color="white",
+                             fg_color="transparent",
                              segmented_button_fg_color="#E0E0E0",
                              segmented_button_selected_color="#A9CCE3",
                              segmented_button_selected_hover_color="#92BBD9",
@@ -1461,73 +1586,73 @@ def abrir_modulo_clientes():
 
     c1_1 = ctk.CTkFrame(f1, fg_color="transparent")
     c1_1.grid(row=0, column=0, padx=20, pady=10, sticky='n')
-    ctk.CTkLabel(c1_1, text="DATOS PRINCIPALES", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(pady=5)
+    ctk.CTkLabel(c1_1, text="DATOS PRINCIPALES", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
-    ctk.CTkLabel(c1_1, text="Cédula:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_1, text="Cédula:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_cedula = crear_entry(c1_1); e_cedula.pack(fill='x')
     e_cedula.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_1, text="RUC:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_1, text="RUC:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_ruc = crear_entry(c1_1); e_ruc.pack(fill='x')
     e_ruc.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_1, text="Nombres y Apellidos:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_1, text="Nombres y Apellidos:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_nombre = crear_entry(c1_1); e_nombre.pack(fill='x')
     e_nombre.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_1, text="F. Nacim:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_1, text="F. Nacim:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_nacimiento = crear_entry(c1_1); e_nacimiento.pack(fill='x')
     e_nacimiento.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_1, text="Estado Civil:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_1, text="Estado Civil:", text_color="black", fg_color="transparent").pack(anchor='w')
     c_civil = ctk.CTkComboBox(c1_1, values=["Soltero", "Casado", "Divorciado", "Viudo", "Unión Libre"], fg_color="white", text_color="black", border_color="grey", button_color="#1860C3")
     c_civil.pack(fill='x')
     
-    ctk.CTkLabel(c1_1, text="Cargas Familiares:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_1, text="Cargas Familiares:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_cargas = crear_entry(c1_1); e_cargas.pack(fill='x')
     e_cargas.bind('<Return>', saltar_campo)
 
     c1_2 = ctk.CTkFrame(f1, fg_color="transparent")
     c1_2.grid(row=0, column=1, padx=20, pady=10, sticky='n')
-    ctk.CTkLabel(c1_2, text="CONTACTO Y UBICACIÓN", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(pady=5)
+    ctk.CTkLabel(c1_2, text="CONTACTO Y UBICACIÓN", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
-    ctk.CTkLabel(c1_2, text="Telf/Celular:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_2, text="Telf/Celular:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_telf = crear_entry(c1_2); e_telf.pack(fill='x')
     e_telf.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_2, text="Email:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_2, text="Email:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_email = crear_entry(c1_2); e_email.pack(fill='x')
     e_email.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_2, text="Dirección Domicilio:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_2, text="Dirección Domicilio:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_dir = crear_entry(c1_2); e_dir.pack(fill='x')
     e_dir.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_2, text="Parroquia:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_2, text="Parroquia:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_parroquia = crear_entry(c1_2); e_parroquia.pack(fill='x')
     e_parroquia.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_2, text="Tipo Vivienda:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_2, text="Tipo Vivienda:", text_color="black", fg_color="transparent").pack(anchor='w')
     c_vivienda = ctk.CTkComboBox(c1_2, values=["Propia", "Arrendada", "Familiar", "Hipotecada"], fg_color="white", text_color="black", border_color="grey", button_color="#1860C3")
     c_vivienda.pack(fill='x')
     
-    ctk.CTkLabel(c1_2, text="Referencia Vivienda:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_2, text="Referencia Vivienda:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_ref_vivienda = crear_entry(c1_2); e_ref_vivienda.pack(fill='x')
     e_ref_vivienda.bind('<Return>', saltar_campo)
 
     c1_3 = ctk.CTkFrame(f1, fg_color="transparent")
     c1_3.grid(row=0, column=2, padx=20, pady=10, sticky='n')
-    ctk.CTkLabel(c1_3, text="REFERENCIAS", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(pady=5)
+    ctk.CTkLabel(c1_3, text="REFERENCIAS", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
-    ctk.CTkLabel(c1_3, text="Referencia Personal 1:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_3, text="Referencia Personal 1:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_ref1 = crear_entry(c1_3); e_ref1.pack(fill='x')
     e_ref1.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_3, text="Referencia Personal 2:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c1_3, text="Referencia Personal 2:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_ref2 = crear_entry(c1_3); e_ref2.pack(fill='x')
     e_ref2.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_3, text="Asesor Asignado:", text_color="black", font=('Arial', 10, 'bold')).pack(anchor='w', pady=(20, 0))
+    ctk.CTkLabel(c1_3, text="Asesor Asignado:", text_color="black", font=('Arial', 10, 'bold'), fg_color="transparent").pack(anchor='w', pady=(20, 0))
     e_asesor = crear_entry(c1_3); e_asesor.pack(fill='x')
     e_asesor.bind('<Return>', saltar_campo)
 
@@ -1537,46 +1662,46 @@ def abrir_modulo_clientes():
 
     c2_1 = ctk.CTkFrame(f2, fg_color="transparent")
     c2_1.grid(row=0, column=0, padx=20, pady=10, sticky='n')
-    ctk.CTkLabel(c2_1, text="INGRESOS Y EGRESOS", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(pady=5)
+    ctk.CTkLabel(c2_1, text="INGRESOS Y EGRESOS", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
-    ctk.CTkLabel(c2_1, text="Score Buró (1-999):", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c2_1, text="Score Buró (1-999):", text_color="black", fg_color="transparent").pack(anchor='w')
     e_score_buro = crear_entry(c2_1, width=100); e_score_buro.pack(anchor='w')
     e_score_buro.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c2_1, text="Ingresos Principal ($):", text_color="black").pack(anchor='w', pady=(5,0))
+    ctk.CTkLabel(c2_1, text="Ingresos Principal ($):", text_color="black", fg_color="transparent").pack(anchor='w', pady=(5,0))
     e_ingresos = crear_entry(c2_1); e_ingresos.pack(fill='x')
     e_ingresos.bind('<Return>', saltar_campo)
     e_ingresos.bind('<FocusOut>', lambda e: (on_focus_out_moneda(e), toggle_fuente_ingreso())) 
     e_ingresos.bind('<FocusIn>', on_focus_in_moneda)
     
     f_fuente_ingreso = ctk.CTkFrame(c2_1, fg_color="transparent")
-    ctk.CTkLabel(f_fuente_ingreso, text="Fuente:", text_color="black").pack(side='left')
+    ctk.CTkLabel(f_fuente_ingreso, text="Fuente:", text_color="black", fg_color="transparent").pack(side='left')
     c_fuente_ingreso = ctk.CTkComboBox(f_fuente_ingreso, values=["Sueldo", "Negocio", "Jubilación", "Arriendo", "Inversiones", "Remesas del Exterior", "Otros"], width=150, fg_color="white", text_color="black", border_color="grey")
     c_fuente_ingreso.pack(side='left', padx=5)
     f_fuente_ingreso.pack(fill='x')
     f_fuente_ingreso.pack_forget()
     
-    ctk.CTkLabel(c2_1, text="Ingresos Secundarios ($):", text_color="black").pack(anchor='w', pady=(5,0))
+    ctk.CTkLabel(c2_1, text="Ingresos Secundarios ($):", text_color="black", fg_color="transparent").pack(anchor='w', pady=(5,0))
     e_ingresos_2 = crear_entry(c2_1); e_ingresos_2.pack(fill='x')
     e_ingresos_2.bind('<Return>', saltar_campo)
     e_ingresos_2.bind('<FocusOut>', lambda e: (on_focus_out_moneda(e), toggle_fuente_ingreso_2())) 
     e_ingresos_2.bind('<FocusIn>', on_focus_in_moneda)
     
     f_fuente_ingreso_2 = ctk.CTkFrame(c2_1, fg_color="transparent")
-    ctk.CTkLabel(f_fuente_ingreso_2, text="Fuente 2:", text_color="black").pack(side='left')
+    ctk.CTkLabel(f_fuente_ingreso_2, text="Fuente 2:", text_color="black", fg_color="transparent").pack(side='left')
     c_fuente_ingreso_2 = ctk.CTkComboBox(f_fuente_ingreso_2, values=["Sueldo", "Negocio", "Jubilación", "Arriendo", "Inversiones", "Remesas del Exterior", "Otros"], width=150, fg_color="white", text_color="black", border_color="grey")
     c_fuente_ingreso_2.pack(side='left', padx=5)
     f_fuente_ingreso_2.pack(fill='x')
     f_fuente_ingreso_2.pack_forget()
     
-    ctk.CTkLabel(c2_1, text="Egresos Mensuales ($):", text_color="black").pack(anchor='w', pady=(5,0))
+    ctk.CTkLabel(c2_1, text="Egresos Mensuales ($):", text_color="black", fg_color="transparent").pack(anchor='w', pady=(5,0))
     e_egresos = crear_entry(c2_1); e_egresos.pack(fill='x')
     e_egresos.bind('<Return>', saltar_campo)
     e_egresos.bind('<FocusOut>', lambda e: (on_focus_out_moneda(e), calcular_total_disponible()))
     e_egresos.bind('<FocusIn>', on_focus_in_moneda)
     
-    ctk.CTkLabel(c2_1, text="Total Disponible:", font=('Arial', 12, 'bold'), text_color="black").pack(anchor='w', pady=(10,0))
-    lbl_total_disponible_valor = ctk.CTkLabel(c2_1, text="$ 0.00", font=('Arial', 16, 'bold'), text_color='#006400')
+    ctk.CTkLabel(c2_1, text="Total Disponible:", font=('Arial', 12, 'bold'), text_color="black", fg_color="transparent").pack(anchor='w', pady=(10,0))
+    lbl_total_disponible_valor = ctk.CTkLabel(c2_1, text="$ 0.00", font=('Arial', 16, 'bold'), text_color='#006400', fg_color="transparent")
     lbl_total_disponible_valor.pack(anchor='w')
     
     e_ingresos.bind('<KeyRelease>', calcular_total_disponible)
@@ -1585,7 +1710,7 @@ def abrir_modulo_clientes():
 
     c2_2 = ctk.CTkFrame(f2, fg_color="transparent")
     c2_2.grid(row=0, column=1, padx=40, pady=10, sticky='n')
-    ctk.CTkLabel(c2_2, text="PATRIMONIO / ACTIVOS", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(pady=5)
+    ctk.CTkLabel(c2_2, text="PATRIMONIO / ACTIVOS", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
     f_terr = ctk.CTkFrame(c2_2, fg_color="transparent"); f_terr.pack(fill='x', pady=2)
     ctk.CTkCheckBox(f_terr, text="Terreno ($)", variable=var_terreno, text_color="black").pack(side='left')
@@ -1593,7 +1718,7 @@ def abrir_modulo_clientes():
     e_valor_terreno.bind('<FocusOut>', on_focus_out_moneda); e_valor_terreno.bind('<FocusIn>', on_focus_in_moneda)
     e_valor_terreno.pack_forget()
     f_terreno_hip = ctk.CTkFrame(c2_2, fg_color="transparent"); f_terreno_hip.pack(fill='x', padx=25)
-    ctk.CTkLabel(f_terreno_hip, text="Hipotecado:", text_color="black", font=('Arial', 10)).pack(side='left')
+    ctk.CTkLabel(f_terreno_hip, text="Hipotecado:", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
     c_hipotecado = ctk.CTkComboBox(f_terreno_hip, values=["Si", "No"], width=70); c_hipotecado.pack(side='left', padx=5)
     f_terreno_hip.pack_forget()
 
@@ -1603,7 +1728,7 @@ def abrir_modulo_clientes():
     e_valor_casa.bind('<FocusOut>', on_focus_out_moneda); e_valor_casa.bind('<FocusIn>', on_focus_in_moneda)
     e_valor_casa.pack_forget()
     f_casa_hip = ctk.CTkFrame(c2_2, fg_color="transparent"); f_casa_hip.pack(fill='x', padx=25)
-    ctk.CTkLabel(f_casa_hip, text="Hipotecado:", text_color="black", font=('Arial', 10)).pack(side='left')
+    ctk.CTkLabel(f_casa_hip, text="Hipotecado:", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
     c_hip_casa = ctk.CTkComboBox(f_casa_hip, values=["Si", "No"], width=70); c_hip_casa.pack(side='left', padx=5)
     f_casa_hip.pack_forget()
 
@@ -1613,7 +1738,7 @@ def abrir_modulo_clientes():
     e_valor_local.bind('<FocusOut>', on_focus_out_moneda); e_valor_local.bind('<FocusIn>', on_focus_in_moneda)
     e_valor_local.pack_forget()
     f_local_hip = ctk.CTkFrame(c2_2, fg_color="transparent"); f_local_hip.pack(fill='x', padx=25)
-    ctk.CTkLabel(f_local_hip, text="Hipotecado:", text_color="black", font=('Arial', 10)).pack(side='left')
+    ctk.CTkLabel(f_local_hip, text="Hipotecado:", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
     c_hip_local = ctk.CTkComboBox(f_local_hip, values=["Si", "No"], width=70); c_hip_local.pack(side='left', padx=5)
     f_local_hip.pack_forget()
 
@@ -1623,29 +1748,29 @@ def abrir_modulo_clientes():
 
     c3_1 = ctk.CTkFrame(f3, fg_color="transparent")
     c3_1.grid(row=0, column=0, padx=20, pady=10, sticky='n')
-    ctk.CTkLabel(c3_1, text="INFORMACIÓN OPERATIVA", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(pady=5)
+    ctk.CTkLabel(c3_1, text="INFORMACIÓN OPERATIVA", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
-    ctk.CTkLabel(c3_1, text="Profesión/Actividad:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c3_1, text="Profesión/Actividad:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_profesion = crear_entry(c3_1); e_profesion.pack(fill='x')
     
-    ctk.CTkLabel(c3_1, text="F. Apertura:", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c3_1, text="F. Apertura:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_apertura = crear_entry(c3_1); e_apertura.pack(fill='x')
     
-    ctk.CTkLabel(c3_1, text="N. Apertura (Carpeta):", text_color="black").pack(anchor='w')
+    ctk.CTkLabel(c3_1, text="N. Apertura (Carpeta):", text_color="black", fg_color="transparent").pack(anchor='w')
     e_carpeta = crear_entry(c3_1); e_carpeta.pack(fill='x')
     
-    ctk.CTkLabel(c3_1, text="Observaciones Generales:", text_color="black").pack(anchor='w', pady=(5,0))
+    ctk.CTkLabel(c3_1, text="Observaciones Generales:", text_color="black", fg_color="transparent").pack(anchor='w', pady=(5,0))
     t_obs = tk.Text(c3_1, height=8, width=35, font=('Arial', 10)); t_obs.pack(fill='x') 
 
     c3_2 = ctk.CTkFrame(f3, fg_color="transparent")
     c3_2.grid(row=0, column=1, padx=40, pady=10, sticky='n')
-    ctk.CTkLabel(c3_2, text="ESTADO LEGAL / CARTERA", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(pady=5)
+    ctk.CTkLabel(c3_2, text="ESTADO LEGAL / CARTERA", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
-    fl_grid = ctk.CTkFrame(c3_2, fg_color="white", border_width=1, border_color="grey")
+    fl_grid = ctk.CTkFrame(c3_2, fg_color="transparent", border_width=1, border_color="grey")
     fl_grid.pack(fill='both', padx=5, pady=5)
     
     ctk.CTkCheckBox(fl_grid, text="Cartera", variable=var_cartera, text_color="black", width=20).grid(row=0, column=0, sticky='w', padx=10, pady=10)
-    lbl_dolar_cartera = ctk.CTkLabel(fl_grid, text="($)", text_color="black")
+    lbl_dolar_cartera = ctk.CTkLabel(fl_grid, text="($)", text_color="black", fg_color="transparent")
     lbl_dolar_cartera.grid(row=0, column=1)
     e_val_cartera = crear_entry(fl_grid, width=100)
     e_val_cartera.grid(row=0, column=2, padx=10)
@@ -1653,7 +1778,7 @@ def abrir_modulo_clientes():
     lbl_dolar_cartera.grid_remove(); e_val_cartera.grid_remove()
 
     ctk.CTkCheckBox(fl_grid, text="Demanda", variable=var_demanda, text_color="black", width=20).grid(row=1, column=0, sticky='w', padx=10, pady=10)
-    lbl_dolar_demanda = ctk.CTkLabel(fl_grid, text="($)", text_color="black")
+    lbl_dolar_demanda = ctk.CTkLabel(fl_grid, text="($)", text_color="black", fg_color="transparent")
     lbl_dolar_demanda.grid(row=1, column=1)
     e_val_demanda = crear_entry(fl_grid, width=100)
     e_val_demanda.grid(row=1, column=2, padx=10)
@@ -1756,6 +1881,7 @@ def abrir_modulo_microcredito():
     global e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, lbl_info_total
     global e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just
     global t_obs_info_micro
+    global f_sub_status, var_sub_status, e_f_comite, e_f_desembolsado, e_f_negado_status, e_f_desistimiento
 
     cedula_micro_actual = None
     id_micro_actual = None
@@ -1772,8 +1898,6 @@ def abrir_modulo_microcredito():
     nav_frame = ctk.CTkFrame(win_micro, fg_color=COLOR_FONDO, height=40)
     nav_frame.pack(side='top', fill='x', pady=(5,0))
     
-    # Logo removed from navigation frame
-
     ctk.CTkButton(nav_frame, text="Volver al Menú", command=win_micro.destroy, 
                   fg_color=COLOR_FONDO, text_color="#d9534f", hover_color="#EEE8AA", 
                   font=('Arial', 12, 'bold')).pack(side='right', padx=10)
@@ -2084,8 +2208,7 @@ def abrir_modulo_microcredito():
     status_list = [
         ("Microcrédito", "#1860C3"),
         ("Rehabilitación", "#28a745"),
-        ("Intermediación", "#fd7e14"),
-        ("Negado", "#dc3545")
+        ("Intermediación", "#fd7e14")
     ]
     
     for txt, clr in status_list:
@@ -2094,6 +2217,31 @@ def abrir_modulo_microcredito():
                             command=lambda t=txt: seleccionar_status(t))
         btn.pack(side='left', padx=10)
         dict_botones_status[txt] = btn
+
+    # FRAME PARA SUB-STATUS DE MICROCRÉDITO
+    f_sub_status = ctk.CTkFrame(tab_status, fg_color="transparent")
+    f_sub_status.pack(pady=10, fill='x')
+    f_sub_status.pack_forget()
+
+    var_sub_status = tk.StringVar(value="")
+
+    def create_sub_opt(parent, label_text, var_val, row_idx):
+        ctk.CTkLabel(parent, text=label_text, text_color="black", font=('Arial', 11, 'bold')).grid(row=row_idx, column=0, sticky='w', padx=(20, 10), pady=5)
+        
+        f_in = ctk.CTkFrame(parent, fg_color="transparent")
+        f_in.grid(row=row_idx, column=1, sticky='w', pady=5)
+        
+        e_f = ctk.CTkEntry(f_in, width=120, placeholder_text="DD/MM/YYYY")
+        e_f.pack(side='left', padx=5)
+        
+        rb = ctk.CTkRadioButton(f_in, text="", variable=var_sub_status, value=var_val, width=20)
+        rb.pack(side='left', padx=5)
+        return e_f
+
+    e_f_comite = create_sub_opt(f_sub_status, "Comité de Crédito:", "Comité de Crédito", 0)
+    e_f_desembolsado = create_sub_opt(f_sub_status, "Desembolsado:", "Desembolsado", 1)
+    e_f_negado_status = create_sub_opt(f_sub_status, "Negado:", "Negado", 2)
+    e_f_desistimiento = create_sub_opt(f_sub_status, "Desistimiento:", "Desistimiento", 3)
 
     ctk.CTkLabel(tab_status, text="Notas y Observaciones de Status:", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(anchor='w', pady=(10, 0))
     t_obs_micro = ctk.CTkTextbox(tab_status, height=200, width=600, fg_color="white", text_color="black", border_color="grey", border_width=1)
@@ -2111,13 +2259,37 @@ def abrir_modulo_microcredito():
 # --- UTILIDADES DE STATUS ---
 def seleccionar_status(st):
     global status_micro_actual
+    
+    # RESTRICCIÓN: Si ya está guardado (id_micro_actual no es None) 
+    # y el usuario NO es admin, no permitir cambiar el status principal
+    if id_micro_actual is not None and NIVEL_ACCESO != 1:
+        # Si intenta cambiar a un status distinto del actual cargado en DB
+        # Re-cargar el status original y salir
+        conn, cursor = conectar_db()
+        cursor.execute("SELECT status FROM Microcreditos WHERE id = ?", (id_micro_actual,))
+        res = cursor.fetchone()
+        conn.close()
+        original_st = res[0] if res else None
+        
+        if st != original_st:
+            messagebox.showwarning("Restricción", "Solo un Administrador puede cambiar el status una vez guardado.")
+            # Restaurar visualmente el botón original (seleccionar_status se llamará recursivamente o manejamos aquí)
+            return
+
     status_micro_actual = st
+    
+    # Manejar visibilidad de sub-status
+    if st == "Microcrédito":
+        f_sub_status.pack(pady=10, fill='x', after=dict_botones_status["Intermediación"].master)
+    else:
+        f_sub_status.pack_forget()
+
     for name, btn in dict_botones_status.items():
         try:
             if name == st:
-                btn.configure(border_width=3, border_color="black")
+                btn.configure(border_width=3, border_color="black", state="normal")
             else:
-                btn.configure(border_width=0)
+                btn.configure(border_width=0, state="normal")
         except: pass
 
 def get_patrimonio_str(v_veh, v_casa, v_terr, v_inv):
@@ -2163,6 +2335,12 @@ def limpiar_form_micro():
         e_val_apertura_micro.delete(0, tk.END)
         lbl_info_total.configure(text="$ 0.00")
     
+    if 'f_sub_status' in globals():
+        var_sub_status.set("")
+        for e in [e_f_comite, e_f_desembolsado, e_f_negado_status, e_f_desistimiento]:
+            e.delete(0, tk.END)
+        f_sub_status.pack_forget()
+
     if 'e_mapa_direccion' in globals(): 
         e_mapa_direccion.delete(0, tk.END)
     # DateEntry reset?
@@ -2348,6 +2526,18 @@ def cargar_datos_micro(cedula):
             seleccionar_status(row[27] if row[27] else None)
         else:
             seleccionar_status(None)
+
+        # Cargar Sub-status
+        if len(row) > 28:
+            var_sub_status.set(row[28] if row[28] else "")
+        if len(row) > 29:
+            e_f_desembolsado.delete(0, tk.END); e_f_desembolsado.insert(0, row[29] if row[29] else "")
+        if len(row) > 30:
+            e_f_negado_status.delete(0, tk.END); e_f_negado_status.insert(0, row[30] if row[30] else "")
+        if len(row) > 31:
+            e_f_desistimiento.delete(0, tk.END); e_f_desistimiento.insert(0, row[31] if row[31] else "")
+        if len(row) > 32:
+            e_f_comite.delete(0, tk.END); e_f_comite.insert(0, row[32] if row[32] else "")
     else:
         id_micro_actual = None
         seleccionar_status(None)
@@ -2380,7 +2570,8 @@ def guardar_microcredito():
         e_m_ref2_rel.get(), e_m_ref2_tiempo.get(), e_m_ref2_dir.get(), c_m_ref2_viv.get(), e_m_ref2_cargas.get(), pat2, c_m_ref2_resp.get(),
         e_m_ref1_fec.get(), e_m_ref1_hor.get(), e_m_ref1_nom.get(), e_m_ref1_tel.get(),
         e_m_ref2_fec.get(), e_m_ref2_hor.get(), e_m_ref2_nom.get(), e_m_ref2_tel.get(),
-        status_micro_actual
+        status_micro_actual, var_sub_status.get(),
+        e_f_desembolsado.get(), e_f_negado_status.get(), e_f_desistimiento.get(), e_f_comite.get()
     )
     
     conn, cursor = conectar_db()
@@ -2397,7 +2588,7 @@ def guardar_microcredito():
                 ref2_relacion=?, ref2_tiempo_conocer=?, ref2_direccion=?, ref2_tipo_vivienda=?, ref2_cargas=?, ref2_patrimonio=?, ref2_responsable=?,
                 ref1_fecha=?, ref1_hora=?, ref1_nombre=?, ref1_telefono=?,
                 ref2_fecha=?, ref2_hora=?, ref2_nombre=?, ref2_telefono=?,
-                status=?
+                status=?, sub_status=?, fecha_desembolsado=?, fecha_negado=?, fecha_desistimiento=?, fecha_comite=?
                 WHERE id=?
             """, vals[2:] + (id_micro_actual,))
             msg = "Datos actualizados."
@@ -2410,8 +2601,8 @@ def guardar_microcredito():
                     ref2_relacion, ref2_tiempo_conocer, ref2_direccion, ref2_tipo_vivienda, ref2_cargas, ref2_patrimonio, ref2_responsable,
                     ref1_fecha, ref1_hora, ref1_nombre, ref1_telefono,
                     ref2_fecha, ref2_hora, ref2_nombre, ref2_telefono,
-                    status
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    status, sub_status, fecha_desembolsado, fecha_negado, fecha_desistimiento, fecha_comite
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, vals)
             msg = "Datos guardados."
             
@@ -2427,7 +2618,7 @@ def guardar_microcredito():
 
 # --- MÓDULOS NUEVOS (Structure) ---
 # --- MÓDULOS GENÉRICOS ---
-def crear_modulo_generico(titulo, color_titulo="#1860C3"):
+def crear_modulo_generico(titulo, color_titulo="#1860C3", search_callback=None):
     win = ctk.CTkToplevel()
     win.title(titulo)
     win.geometry("1100x750")
@@ -2448,7 +2639,7 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3"):
     
     left_panel = ctk.CTkFrame(main_frame, fg_color="transparent")
     left_panel.pack(side='left', fill='both', expand=True, padx=(0, 20))
-
+ 
     # Search Section
     search_frame = ctk.CTkFrame(left_panel, fg_color="white", corner_radius=15, border_width=1, border_color="#CCCCCC")
     search_frame.pack(fill='x', pady=(0,10))
@@ -2463,7 +2654,7 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3"):
     ctk.CTkLabel(sf_in, text="RUC:", font=('Arial', 11), text_color="black").pack(side='left', padx=(10,0))
     e_ruc = ctk.CTkEntry(sf_in, width=130, fg_color="white", text_color="black")
     e_ruc.pack(side='left', padx=5)
-
+ 
     ctk.CTkLabel(sf_in, text="Cliente:", font=('Arial', 11), text_color="black").pack(side='left', padx=(10,0))
     e_nombre = ctk.CTkEntry(sf_in, width=300, fg_color="white", text_color="black")
     e_nombre.pack(side='left', padx=5)
@@ -2474,8 +2665,12 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3"):
         if len(ced) == 10 and ced.isdigit(): criteria = "cedula"; val = ced
         elif len(ruc) >= 10 and ruc.isdigit(): criteria = "ruc"; val = ruc
         elif len(nom) >= 3: criteria = "nombre"; val = nom
-        if not criteria: return
-
+        
+        if not criteria:
+            if search_callback:
+                search_callback(None) # Clear callback
+            return
+ 
         conn, cursor = conectar_db()
         res = None
         if criteria == "cedula":
@@ -2498,11 +2693,17 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3"):
                 if res[1]: e_ruc.insert(0, res[1])
             if criteria != "cedula" or (widget != e_cedula):
                 e_cedula.delete(0, tk.END); e_cedula.insert(0, res[2])
-
+            
+            if search_callback:
+                search_callback(res[2]) # Trigger callback with cedula
+        else:
+            if search_callback:
+                search_callback(None) # Clear callback if not found
+ 
     e_cedula.bind('<KeyRelease>', buscar_cliente_gen)
     e_ruc.bind('<KeyRelease>', buscar_cliente_gen)
     e_nombre.bind('<KeyRelease>', buscar_cliente_gen)
-
+ 
     # Logo
     try:
         img = Image.open("Logo Face.jpg")
@@ -2518,7 +2719,7 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3"):
     nb.pack(fill='both', expand=True)
     nb.add("General")
     
-    return win, nb.tab("General")
+    return win, nb.tab("General"), nb
 
 def abrir_modulo_usuarios():
     win = ctk.CTkToplevel()
@@ -2625,19 +2826,272 @@ def abrir_modulo_usuarios():
 
 
 def abrir_modulo_rehabilitacion():
-    win, frame = crear_modulo_generico("Módulo de Rehabilitación")
-    ctk.CTkLabel(frame, text="Contenido específico de Rehabilitación aquí...", text_color="grey", font=("Arial", 12)).pack(pady=50)
+    # Variables de UI
+    var_cedula = tk.StringVar()
+    var_f_inicio = tk.StringVar()
+    var_finalizado = tk.IntVar(value=0)
+
+    # Referencias a widgets para bloqueo
+    list_bloqueables = []
+
+    def load_rehab_data(cedula):
+        if not cedula:
+            var_cedula.set("")
+            var_f_inicio.set("")
+            txt_terminos.delete("1.0", tk.END)
+            txt_resultado.delete("1.0", tk.END)
+            var_finalizado.set(0)
+            update_lock_ui()
+            return
+
+        var_cedula.set(cedula)
+        conn, cursor = conectar_db()
+        cursor.execute("SELECT fecha_inicio, terminos, resultado, finalizado FROM Rehabilitacion WHERE cedula_cliente = ?", (cedula,))
+        res = cursor.fetchone()
+        conn.close()
+
+        txt_terminos.delete("1.0", tk.END)
+        txt_resultado.delete("1.0", tk.END)
+
+        if res:
+            var_f_inicio.set(res[0] or "")
+            txt_terminos.insert("1.0", res[1] or "")
+            txt_resultado.insert("1.0", res[2] or "")
+            var_finalizado.set(res[3] or 0)
+        else:
+            var_f_inicio.set("")
+            var_finalizado.set(0)
+        
+        update_lock_ui()
+
+    def save_rehab_data():
+        ced = var_cedula.get()
+        if not ced:
+            messagebox.showwarning("Atención", "Seleccione un cliente primero.")
+            return
+
+        f_ini = var_f_inicio.get()
+        term = txt_terminos.get("1.0", tk.END).strip()
+        rest = txt_resultado.get("1.0", tk.END).strip()
+        fin = var_finalizado.get()
+
+        conn, cursor = conectar_db()
+        try:
+            cursor.execute("""
+                INSERT INTO Rehabilitacion (cedula_cliente, fecha_inicio, terminos, resultado, finalizado)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(cedula_cliente) DO UPDATE SET
+                fecha_inicio=excluded.fecha_inicio,
+                terminos=excluded.terminos,
+                resultado=excluded.resultado,
+                finalizado=excluded.finalizado
+            """, (ced, f_ini, term, rest, fin))
+            conn.commit()
+            messagebox.showinfo("Éxito", "Datos de rehabilitación guardados.")
+            registrar_auditoria("Guardar Rehabilitación", id_cliente=ced, detalles=f"Estado finalizado: {fin}")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo guardar: {e}")
+        finally:
+            conn.close()
+
+    def toggle_finalizar():
+        # Verificar nivel de admin para desbloquear
+        if var_finalizado.get() == 1:
+            global NIVEL_ACCESO
+            # Nivel 1 es Administrador
+            if NIVEL_ACCESO != 1:
+                messagebox.showerror("Seguridad", "Solo un Administrador puede reabrir este proceso.")
+                return
+            
+            if messagebox.askyesno("Confirmar", "¿Desea reabrir el proceso?"):
+                var_finalizado.set(0)
+                update_lock_ui()
+        else:
+            if messagebox.askyesno("Confirmar", "¿Desea finalizar el proceso? Esto bloqueará el expediente."):
+                var_finalizado.set(1)
+                save_rehab_data()
+                update_lock_ui()
+
+    def update_lock_ui():
+        is_fin = var_finalizado.get() == 1
+        st = "disabled" if is_fin else "normal"
+        
+        for w in list_bloqueables:
+            w.configure(state=st)
+        
+        if is_fin:
+            btn_finalizar.configure(text="🔒 PROCESO FINALIZADO (REABRIR)", fg_color="#d9534f", hover_color="#c9302c")
+        else:
+            btn_finalizar.configure(text="✅ FINALIZAR PROCESO", fg_color="#28a745", hover_color="#218838")
+
+    def ver_llamadas():
+        ced = var_cedula.get()
+        if not ced: return
+        messagebox.showinfo("Historial de Llamadas", f"Mostrando historial de llamadas para: {ced}\n(Módulo en desarrollo)")
+
+    def ver_visitas():
+        ced = var_cedula.get()
+        if not ced: return
+        
+        conn, cursor = conectar_db()
+        cursor.execute("SELECT fecha, observaciones FROM visitas_microcredito WHERE cedula_cliente = ?", (ced,))
+        visitas = cursor.fetchall()
+        conn.close()
+        
+        if not visitas:
+            messagebox.showinfo("Visitas", "No se encontraron visitas registradas para este cliente.")
+            return
+            
+        msg = f"Visitas registradas para {ced}:\n\n"
+        for v in visitas:
+            msg += f"📅 {v[0]}: {v[1]}\n"
+        
+        # Mostrar en un popup simple o un toplevel nuevo si es largo
+        messagebox.showinfo("Historial de Visitas", msg)
+
+    # UI
+    win, frame, nb = crear_modulo_generico("Módulo de Rehabilitación", search_callback=load_rehab_data)
+    
+    # --- PESTAÑA GENERAL (Contenido extra) ---
+    extra_f = ctk.CTkFrame(frame, fg_color="transparent")
+    extra_f.pack(pady=10, fill='x')
+    
+    ctk.CTkButton(extra_f, text="📞 Ver Llamadas", command=ver_llamadas, fg_color="#5bc0de", text_color="white", width=150).pack(side='left', padx=10)
+    ctk.CTkButton(extra_f, text="🏠 Ver Visitas Micro", command=ver_visitas, fg_color="#f0ad4e", text_color="white", width=150).pack(side='left', padx=10)
+
+    # --- PESTAÑA PROCESO ---
+    nb.add("Proceso")
+    tab_p = nb.tab("Proceso")
+    
+    p_main = ctk.CTkScrollableFrame(tab_p, fg_color="white", corner_radius=10)
+    p_main.pack(fill='both', expand=True, padx=10, pady=10)
+    
+    # F. Inicio
+    ctk.CTkLabel(p_main, text="Fecha de Inicio de Rehabilitación:", font=('Arial', 12, 'bold'), text_color="black").pack(anchor='w', pady=(10,5))
+    e_f_inicio = ctk.CTkEntry(p_main, textvariable=var_f_inicio, width=200)
+    e_f_inicio.pack(anchor='w', padx=5)
+    list_bloqueables.append(e_f_inicio)
+    
+    # Términos
+    ctk.CTkLabel(p_main, text="Términos de Rehabilitación:", font=('Arial', 12, 'bold'), text_color="black").pack(anchor='w', pady=(20,5))
+    txt_terminos = ctk.CTkTextbox(p_main, height=120, border_width=1)
+    txt_terminos.pack(fill='x', padx=5)
+    list_bloqueables.append(txt_terminos)
+    
+    # Resultado
+    ctk.CTkLabel(p_main, text="Resultado / Conclusiones:", font=('Arial', 12, 'bold'), text_color="black").pack(anchor='w', pady=(20,5))
+    txt_resultado = ctk.CTkTextbox(p_main, height=120, border_width=1)
+    txt_resultado.pack(fill='x', padx=5)
+    list_bloqueables.append(txt_resultado)
+    
+    # Botonera
+    btn_box = ctk.CTkFrame(tab_p, fg_color="transparent")
+    btn_box.pack(fill='x', pady=10)
+    
+    btn_save = ctk.CTkButton(btn_box, text="💾 GUARDAR CAMBIOS", command=save_rehab_data, fg_color="#1860C3")
+    btn_save.pack(side='left', padx=10)
+    list_bloqueables.append(btn_save)
+    
+    btn_finalizar = ctk.CTkButton(btn_box, text="✅ FINALIZAR PROCESO", command=toggle_finalizar)
+    btn_finalizar.pack(side='right', padx=10)
+
+    update_lock_ui()
 
 def abrir_modulo_intermediacion():
-    win, frame = crear_modulo_generico("Módulo de Intermediación")
+    win, frame, nb = crear_modulo_generico("Módulo de Intermediación")
     ctk.CTkLabel(frame, text="Contenido específico de Intermediación aquí...", text_color="grey", font=("Arial", 12)).pack(pady=50)
 
 def abrir_modulo_consultas():
-    win, frame = crear_modulo_generico("Módulo de Consultas")
-    ctk.CTkLabel(frame, text="Contenido específico de Consultas aquí...", text_color="grey", font=("Arial", 12)).pack(pady=50)
+    # Variables de UI para mostrar el estado y la fecha
+    var_estado = tk.StringVar()
+    var_fecha = tk.StringVar()
+
+    def actualizar_consultas(cedula):
+        """Callback que se activa cuando se encuentra un cliente en el buscador genérico."""
+        if not cedula:
+            var_estado.set("")
+            var_fecha.set("")
+            return
+        
+        conn, cursor = conectar_db()
+        try:
+            # 1. Buscar en Microcreditos (Prioridad para estados finales de trámite)
+            cursor.execute("""
+                SELECT status, sub_status, fecha_desembolsado, fecha_negado, 
+                       fecha_desistimiento, fecha_comite 
+                FROM Microcreditos WHERE cedula_cliente = ?
+            """, (cedula,))
+            micro = cursor.fetchone()
+            
+            res_estado = "No definido"
+            res_fecha = "-"
+
+            if micro:
+                # Orden de prioridad según importancia del estado final
+                if micro[2]: # fecha_desembolsado
+                    res_estado = "DESEMBOLSADO"
+                    res_fecha = micro[2]
+                elif micro[3]: # fecha_negado
+                    res_estado = "NEGADO"
+                    res_fecha = micro[3]
+                elif micro[4]: # fecha_desistimiento
+                    res_estado = "DESISTIDO"
+                    res_fecha = micro[4]
+                elif micro[5]: # fecha_comite
+                    res_estado = "EN COMITÉ"
+                    res_fecha = micro[5]
+                else:
+                    # Si no tiene fecha específica, usamos el status general o sub_status
+                    res_estado = micro[0] or "MICROCRÉDITO (EN TRÁMITE)"
+                    res_fecha = "Pendiente"
+            else:
+                # 2. Si no hay registro en Microcreditos, consultamos el producto en la ficha del Cliente
+                cursor.execute("SELECT producto, apertura FROM Clientes WHERE cedula = ?", (cedula,))
+                cli = cursor.fetchone()
+                if cli:
+                    res_estado = (cli[0] or "CLIENTE REGISTRADO").upper()
+                    res_fecha = cli[1] or "Sin Fecha de Apertura"
+            
+            var_estado.set(res_estado)
+            var_fecha.set(res_fecha)
+        except Exception as e:
+            print(f"Error en consulta de estados: {e}")
+        finally:
+            conn.close()
+
+    # Llamada al generador con el callback de búsqueda
+    win, frame, nb = crear_modulo_generico("Módulo de Consultas", search_callback=actualizar_consultas)
+    
+    # --- UI ADICIONAL PARA CONSULTAS ---
+    # Contenedor central resaltado
+    status_frame = ctk.CTkFrame(frame, fg_color="#F0F8FF", corner_radius=15, border_width=1, border_color="#A9CCE3")
+    status_frame.pack(pady=30, padx=50, fill='x')
+    
+    inner = ctk.CTkFrame(status_frame, fg_color="transparent")
+    inner.pack(padx=40, pady=30, expand=True)
+    
+    # Campo de Visualización de Estado
+    ctk.CTkLabel(inner, text="ESTADO DEL PROCESO:", font=('Arial', 14, 'bold'), text_color="#1860C3").grid(row=0, column=0, padx=(0,20), pady=15, sticky='e')
+    e_estado = ctk.CTkEntry(inner, textvariable=var_estado, width=350, height=40, font=('Arial', 16, 'bold'), 
+                            fg_color="white", text_color="#2E8B57", border_color="#1860C3", state='readonly', corner_radius=8)
+    e_estado.grid(row=0, column=1, pady=15)
+    
+    # Campo de Visualización de Fecha
+    ctk.CTkLabel(inner, text="FECHA ASOCIADA:", font=('Arial', 13, 'bold'), text_color="#555555").grid(row=1, column=0, padx=(0,20), pady=10, sticky='e')
+    e_fecha = ctk.CTkEntry(inner, textvariable=var_fecha, width=350, height=35, font=('Arial', 14), 
+                           fg_color="#F9F9F9", text_color="black", border_color="#CCCCCC", state='readonly', corner_radius=8)
+    e_fecha.grid(row=1, column=1, pady=10)
+
+    # Nota informativa
+    ctk.CTkLabel(frame, text="* La información se sincroniza en tiempo real de la base de datos central.", 
+                 font=("Arial", 11, "italic"), text_color="grey").pack(pady=10)
+    
+    # Mensaje de ayuda inicial
+    var_estado.set("ESPERANDO BÚSQUEDA...")
+    var_fecha.set("-")
 
 def abrir_modulo_cartera():
-    win, frame = crear_modulo_generico("Módulo de Cartera")
+    win, frame, nb = crear_modulo_generico("Módulo de Cartera")
     ctk.CTkLabel(frame, text="Contenido específico de Cartera aquí...", text_color="grey", font=("Arial", 12)).pack(pady=50)
 
 

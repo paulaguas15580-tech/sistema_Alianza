@@ -9,6 +9,8 @@ import subprocess
 from PIL import Image, ImageTk 
 import webbrowser
 import customtkinter as ctk
+from db_manager import DatabaseManager
+import psycopg2.extras
 
 # --- CONFIGURACIÓN CUSTOMTKINTER ---
 ctk.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
@@ -25,7 +27,20 @@ ID_CLIENTE_SELECCIONADO = None
 status_micro_actual = None
 dict_botones_status = {}
 
-DB_NAME = 'Alianza.db'
+DB_NAME = 'Alianza.db' # Mantenido por referencia, pero usaremos PostgreSQL
+
+# Configuración PostgreSQL (Ajustar según red local)
+try:
+    db_manager = DatabaseManager(
+        host="localhost", # IP del servidor
+        database="alianza_db",
+        user="postgres",
+        password="clave_segura" # Cambiar por la real
+    )
+except Exception as e:
+    # Mostramos el error en consola, el manejo amigable se hace en los módulos
+    print(f"Alerta de Arquitectura: {e}")
+    db_manager = None
 
 # =================================================================
 # FUNCIÓN HELPER PARA LOGO
@@ -55,15 +70,22 @@ def generar_hash(clave):
     return hashlib.sha256(clave.encode()).hexdigest()
 
 def conectar_db():
-    conn = sqlite3.connect(DB_NAME)
-    return conn, conn.cursor()
+    """
+    Wrapper de compatibilidad para PostgreSQL/SQLite.
+    Retorna una conexión y un cursor normalizado.
+    """
+    if not db_manager:
+        raise ConnectionError("No hay conexión con el servidor de base de datos.")
+    
+    conn = db_manager.get_connection()
+    return conn, db_manager.get_cursor(conn)
 
 def crear_tablas():
     conn, cursor = conectar_db()
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS Clientes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                id {sql_type("SERIAL PRIMARY KEY")}, 
                 cedula TEXT UNIQUE NOT NULL,  
                 ruc TEXT,
                 nombre TEXT NOT NULL,
@@ -93,9 +115,9 @@ def crear_tablas():
             )
         """)
         
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS Usuarios (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {sql_type("SERIAL PRIMARY KEY")},
                 usuario TEXT UNIQUE NOT NULL,
                 clave_hash TEXT NOT NULL, 
                 nivel_acceso INTEGER NOT NULL,
@@ -104,9 +126,9 @@ def crear_tablas():
             )
         """)
 
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS Auditoria (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {sql_type("SERIAL PRIMARY KEY")},
                 id_usuario TEXT,
                 accion TEXT,
                 id_cliente TEXT,
@@ -115,9 +137,9 @@ def crear_tablas():
             )
         """)
         
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS Rehabilitacion (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {sql_type("SERIAL PRIMARY KEY")},
                 cedula_cliente TEXT UNIQUE NOT NULL,
                 fecha_inicio TEXT,
                 terminos TEXT,
@@ -127,9 +149,9 @@ def crear_tablas():
             )
         """)
 
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS visitas_microcredito (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {sql_type("SERIAL PRIMARY KEY")},
                 cedula_cliente TEXT NOT NULL,
                 fecha TEXT,
                 observaciones TEXT,
@@ -137,9 +159,9 @@ def crear_tablas():
             )
         """)
 
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS Caja (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {sql_type("SERIAL PRIMARY KEY")},
                 fecha_hora TEXT,
                 cedula TEXT,
                 ruc TEXT,
@@ -159,29 +181,36 @@ def crear_tablas():
         cursor.execute("SELECT COUNT(*) FROM Usuarios")
         if cursor.fetchone()[0] == 0:
             hash_admin = generar_hash('cyberpol2022') 
-            cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso, rol) VALUES (?, ?, ?, ?)", ('Paul', hash_admin, 1, 'Administrador'))
+            cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso, rol) VALUES (%s, %s, %s, %s)", ('Paul', hash_admin, 1, 'Administrador'))
 
         conn.commit()
     except Exception as e: print(f"Error DB: {e}")
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
+
+# Helpers delegados a db_manager
+def sql_type(t): return db_manager.sql_type(t)
+def get_column_names(c, t): return db_manager.get_column_names(c, t)
+def check_table_exists(c, t): return db_manager.check_table_exists(c, t)
+def fix_query(q): 
+    if db_manager.mode == "SQLITE": return q.replace("%s", "?")
+    return q
 
 def registrar_auditoria(accion, id_cliente=None, detalles=None):
     """Registra una acción en la tabla de Auditoria"""
     conn, cursor = conectar_db()
     try:
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("INSERT INTO Auditoria (id_usuario, accion, id_cliente, detalles, timestamp) VALUES (?,?,?,?,?)",
+        cursor.execute(fix_query("INSERT INTO Auditoria (id_usuario, accion, id_cliente, detalles, timestamp) VALUES (%s,%s,%s,%s,%s)"),
                        (USUARIO_ACTIVO, accion, id_cliente, detalles, ts))
         conn.commit()
     except Exception as e: print(f"Error auditoría: {e}")
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
 
 def migrar_db():
     conn, cursor = conectar_db()
     try:
         # Verificar si existe la columna 'referencia_vivienda'
-        cursor.execute("PRAGMA table_info(Clientes)")
-        columnas = [info[1] for info in cursor.fetchall()]
+        columnas = get_column_names(cursor, 'Clientes')
         
         if 'referencia_vivienda' not in columnas:
             print("Migrando DB: Agregando columna 'referencia_vivienda'...")
@@ -275,8 +304,7 @@ def migrar_db():
             conn.commit()
 
         # Migración Usuarios
-        cursor.execute("PRAGMA table_info(Usuarios)")
-        cols_user = [info[1] for info in cursor.fetchall()]
+        cols_user = get_column_names(cursor, 'Usuarios')
         if 'estado' not in cols_user:
             print("Migrando DB: Agregando 'estado' a Usuarios...")
             cursor.execute("ALTER TABLE Usuarios ADD COLUMN estado INTEGER DEFAULT 1")
@@ -289,8 +317,7 @@ def migrar_db():
             conn.commit()
 
         # Tabla Auditoria
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Auditoria'")
-        if not cursor.fetchone():
+        if not check_table_exists(cursor, 'Auditoria'):
             print("Migrando DB: Creando tabla 'Auditoria'...")
             cursor.execute("""
                 CREATE TABLE Auditoria (
@@ -305,8 +332,7 @@ def migrar_db():
             conn.commit()
         
         # Verificar si existe la tabla Documentos
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Documentos'")
-        if not cursor.fetchone():
+        if not check_table_exists(cursor, 'Documentos'):
             print("Migrando DB: Creando tabla 'Documentos'...")
             cursor.execute("""
                 CREATE TABLE Documentos (
@@ -323,8 +349,7 @@ def migrar_db():
             print("Tabla 'Documentos' creada exitosamente.")
             
         # Verificar si existe la tabla Microcreditos
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Microcreditos'")
-        if not cursor.fetchone():
+        if not check_table_exists(cursor, 'Microcreditos'):
             print("Migrando DB: Creando tabla 'Microcreditos'...")
             cursor.execute("""
                 CREATE TABLE Microcreditos (
@@ -357,8 +382,7 @@ def migrar_db():
             print("Tabla 'Microcreditos' creada exitosamente.")
         else:
             # Si ya existe, verificar si falta observaciones_info
-            cursor.execute("PRAGMA table_info(Microcreditos)")
-            cols_micro = [info[1] for info in cursor.fetchall()]
+            cols_micro = get_column_names(cursor, 'Microcreditos')
             if 'observaciones_info' not in cols_micro:
                 print("Migrando DB: Agregando columna 'observaciones_info' a Microcreditos...")
                 cursor.execute("ALTER TABLE Microcreditos ADD COLUMN observaciones_info TEXT")
@@ -398,8 +422,7 @@ def migrar_db():
             conn.commit()
             
         # Tabla Caja
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Caja'")
-        if not cursor.fetchone():
+        if not check_table_exists(cursor, 'Caja'):
             print("Migrando DB: Creando tabla 'Caja'...")
             cursor.execute("""
                 CREATE TABLE Caja (
@@ -427,12 +450,12 @@ def migrar_db():
         if admin_user:
             print("Migrando usuario admin a Paul...")
             new_hash = generar_hash('cyberpol2022')
-            cursor.execute("UPDATE Usuarios SET usuario=?, clave_hash=? WHERE id=?", ('Paul', new_hash, admin_user[0]))
+            cursor.execute("UPDATE Usuarios SET usuario=%s, clave_hash=%s WHERE id=%s", ('Paul', new_hash, admin_user[0]))
             conn.commit()
             print("Usuario actualizado.")
 
     except Exception as e: print(f"Error Migración: {e}")
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
 
 crear_tablas()
 migrar_db()
@@ -515,7 +538,7 @@ def guardar_cliente(*args):
                 casa_dep, valor_casa_dep, hipotecado_casa_dep, local, valor_local, hipotecado_local,
                 ingresos_mensuales_2, fuente_ingreso_2, score_buro, egresos, total_disponible
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
               prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, prod, obs, 
               cart, val_cart, dem, val_dem, just, det_just,
@@ -526,14 +549,14 @@ def guardar_cliente(*args):
         return True, "Guardado exitosamente."
     except sqlite3.IntegrityError: return False, "Cédula ya existe."
     except Exception as e: return False, f"Error: {e}"
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
 
 def consultar_clientes():
     conn, cursor = conectar_db()
     try:
         cursor.execute("SELECT * FROM Clientes")
         return cursor.fetchall()
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
 
 def actualizar_cliente(id_cliente, *args):
     (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
@@ -571,13 +594,13 @@ def actualizar_cliente(id_cliente, *args):
     try:
         cursor.execute("""
             UPDATE Clientes SET 
-            cedula=?, ruc=?, nombre=?, estado_civil=?, cargas_familiares=?, email=?, telefono=?, direccion=?, parroquia=?, 
-            tipo_vivienda=?, referencia_vivienda=?, profesion=?, ingresos_mensuales=?, fuente_ingreso=?, terreno=?, valor_terreno=?, hipotecado=?, referencia1=?, referencia2=?, asesor=?, apertura=?, numero_carpeta=?, 
-            "fecha nacimiento"=?, producto=?, observaciones=?, 
-            "cartera castigada"=?, "valor cartera"=?, "demanda judicial"=?, "valor demanda"=?, "problemas justicia"=?, "detalle justicia"=?,
-            casa_dep=?, valor_casa_dep=?, hipotecado_casa_dep=?, local=?, valor_local=?, hipotecado_local=?,
-            ingresos_mensuales_2=?, fuente_ingreso_2=?, score_buro=?, egresos=?, total_disponible=?
-            WHERE id=?
+            cedula=%s, ruc=%s, nombre=%s, estado_civil=%s, cargas_familiares=%s, email=%s, telefono=%s, direccion=%s, parroquia=%s, 
+            tipo_vivienda=%s, referencia_vivienda=%s, profesion=%s, ingresos_mensuales=%s, fuente_ingreso=%s, terreno=%s, valor_terreno=%s, hipotecado=%s, referencia1=%s, referencia2=%s, asesor=%s, apertura=%s, numero_carpeta=%s, 
+            "fecha nacimiento"=%s, producto=%s, observaciones=%s, 
+            "cartera castigada"=%s, "valor cartera"=%s, "demanda judicial"=%s, "valor demanda"=%s, "problemas justicia"=%s, "detalle justicia"=%s,
+            casa_dep=%s, valor_casa_dep=%s, hipotecado_casa_dep=%s, local=%s, valor_local=%s, hipotecado_local=%s,
+            ingresos_mensuales_2=%s, fuente_ingreso_2=%s, score_buro=%s, egresos=%s, total_disponible=%s
+            WHERE id=%s
         """, (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
               prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, prod, obs, 
               cart, val_cart, dem, val_dem, just, det_just,
@@ -587,43 +610,43 @@ def actualizar_cliente(id_cliente, *args):
         registrar_auditoria("Actualizar Cliente", id_cliente=cedula, detalles=f"Cliente {nombre} actualizado.")
         return True, "Actualizado correctamente."
     except Exception as e: return False, f"Error: {e}"
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
 
 def eliminar_cliente(id_cliente):
     if NIVEL_ACCESO != 1: return False, "No tiene permisos para eliminar."
     conn, cursor = conectar_db()
     # Get cedula for audit before deleting
-    cursor.execute("SELECT cedula, nombre FROM Clientes WHERE id = ?", (id_cliente,))
+    cursor.execute("SELECT cedula, nombre FROM Clientes WHERE id = %s", (id_cliente,))
     res = cursor.fetchone()
     if res:
         ced, nom = res
-        cursor.execute("DELETE FROM Clientes WHERE id = ?", (id_cliente,))
+        cursor.execute("DELETE FROM Clientes WHERE id = %s", (id_cliente,))
         conn.commit()
         registrar_auditoria("Eliminar Cliente", id_cliente=ced, detalles=f"Cliente {nom} eliminado.")
-    conn.close()
+    db_manager.release_connection(conn)
     return True, "Eliminado"
 
 def buscar_clientes(termino):
     conn, cursor = conectar_db()
     t = '%' + termino + '%'
-    cursor.execute("SELECT * FROM Clientes WHERE nombre LIKE ? OR cedula LIKE ? OR ruc LIKE ? OR numero_carpeta LIKE ?", (t,t,t,t))
+    cursor.execute("SELECT * FROM Clientes WHERE nombre LIKE %s OR cedula LIKE %s OR ruc LIKE %s OR numero_carpeta LIKE %s", (t,t,t,t))
     return cursor.fetchall()
 
 # --- USUARIOS ---
 def crear_usuario_db(usuario, clave, nivel, rol="Usuario"):
     conn, cursor = conectar_db()
     try:
-        cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso, rol, estado) VALUES (?, ?, ?, ?, ?)", 
+        cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso, rol, estado) VALUES (%s, %s, %s, %s, %s)", 
                        (usuario, generar_hash(clave), nivel, rol, 1))
         conn.commit(); return True, "Ok"
     except: return False, "Error"
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
 
 def verificar_credenciales(usuario, clave):
     conn, cursor = conectar_db()
-    cursor.execute("SELECT clave_hash, nivel_acceso, estado, rol FROM Usuarios WHERE usuario = ?", (usuario,))
+    cursor.execute("SELECT clave_hash, nivel_acceso, estado, rol FROM Usuarios WHERE usuario = %s", (usuario,))
     res = cursor.fetchone()
-    conn.close()
+    db_manager.release_connection(conn)
     if res:
         h, lvl, est, rol = res
         if est == 0: return False, "Inactivo"
@@ -751,9 +774,9 @@ def cargar_seleccion(event):
     id_sel = tree.item(sel[0], 'values')[0]
     
     conn, cursor = conectar_db()
-    cursor.execute("SELECT * FROM Clientes WHERE id = ?", (id_sel,))
+    cursor.execute("SELECT * FROM Clientes WHERE id = %s", (id_sel,))
     val = cursor.fetchone()
-    conn.close()
+    db_manager.release_connection(conn)
     
     if not val: return
 
@@ -912,10 +935,10 @@ def win_gestion_usuarios():
     
     def ref_u():
         for i in tr.get_children(): tr.delete(i)
-        conn = sqlite3.connect(DB_NAME); c=conn.cursor()
+        conn, c = conectar_db()
         c.execute("SELECT id, usuario, nivel_acceso FROM Usuarios")
         for u in c.fetchall(): tr.insert('', tk.END, values=(u[0], u[1], "Admin" if u[2]==1 else "Std"))
-        conn.close()
+        db_manager.release_connection(conn)
 
     def add_u():
         crear_usuario_db(eu.get(), ep.get(), 1 if cr.get()=="Admin" else 2)
@@ -924,9 +947,9 @@ def win_gestion_usuarios():
     def del_u():
         s = tr.selection()
         if s:
-            conn = sqlite3.connect(DB_NAME); c=conn.cursor()
-            c.execute("DELETE FROM Usuarios WHERE id=?", (tr.item(s[0],'values')[0],))
-            conn.commit(); conn.close(); ref_u()
+            conn, c = conectar_db()
+            c.execute("DELETE FROM Usuarios WHERE id=%s", (tr.item(s[0],'values')[0],))
+            conn.commit(); db_manager.release_connection(conn); ref_u()
     
     f = ttk.Frame(top, padding=5); f.pack(fill='x')
     ttk.Label(f, text="U:").pack(side='left'); eu = ttk.Entry(f, width=10); eu.pack(side='left')
@@ -1091,16 +1114,16 @@ def abrir_modulo_informes():
         res = None
         
         if criteria == "cedula":
-             cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE cedula = ?", (val,))
+             cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE cedula = %s", (val,))
              res = cursor.fetchone()
         elif criteria == "ruc":
-             cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE ruc = ?", (val,))
+             cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE ruc = %s", (val,))
              res = cursor.fetchone()
         elif criteria == "nombre":
-             cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE nombre LIKE ? LIMIT 1", (f"%{val}%",))
+             cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE nombre LIKE %s LIMIT 1", (f"%{val}%",))
              res = cursor.fetchone()
         
-        conn.close()
+        db_manager.release_connection(conn)
         
         if res:
             widget = event.widget if event else None
@@ -1134,9 +1157,9 @@ def limpiar_lista_documentos():
 def cargar_documentos(cedula):
     limpiar_lista_documentos()
     conn, cursor = conectar_db()
-    cursor.execute("SELECT id, tipo_documento, nombre_archivo, fecha_subida FROM Documentos WHERE cedula_cliente = ? ORDER BY fecha_subida DESC", (cedula,))
+    cursor.execute("SELECT id, tipo_documento, nombre_archivo, fecha_subida FROM Documentos WHERE cedula_cliente = %s ORDER BY fecha_subida DESC", (cedula,))
     documentos = cursor.fetchall()
-    conn.close()
+    db_manager.release_connection(conn)
     
     for doc in documentos:
         tree_docs.insert('', tk.END, values=doc)
@@ -1219,10 +1242,10 @@ def guardar_documento_db(cedula, archivo_origen, tipo):
         conn, cursor = conectar_db()
         cursor.execute("""
             INSERT INTO Documentos (cedula_cliente, nombre_archivo, tipo_documento, ruta_archivo, fecha_subida)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (cedula, nombre_archivo, tipo, ruta_destino, fecha_actual))
         conn.commit()
-        conn.close()
+        db_manager.release_connection(conn)
         
         messagebox.showinfo("Éxito", "Documento subido correctamente")
         cargar_documentos(cedula)
@@ -1239,9 +1262,9 @@ def ver_documento():
     doc_id = tree_docs.item(seleccion[0])['values'][0]
     
     conn, cursor = conectar_db()
-    cursor.execute("SELECT ruta_archivo FROM Documentos WHERE id = ?", (doc_id,))
+    cursor.execute("SELECT ruta_archivo FROM Documentos WHERE id = %s", (doc_id,))
     resultado = cursor.fetchone()
-    conn.close()
+    db_manager.release_connection(conn)
     
     if resultado:
         ruta = resultado[0]
@@ -1268,7 +1291,7 @@ def eliminar_documento():
     doc_id = tree_docs.item(seleccion[0])['values'][0]
     
     conn, cursor = conectar_db()
-    cursor.execute("SELECT ruta_archivo FROM Documentos WHERE id = ?", (doc_id,))
+    cursor.execute("SELECT ruta_archivo FROM Documentos WHERE id = %s", (doc_id,))
     resultado = cursor.fetchone()
     
     if resultado:
@@ -1281,10 +1304,10 @@ def eliminar_documento():
                 print(f"Error al eliminar archivo: {e}")
         
         # Eliminar de base de datos
-        cursor.execute("DELETE FROM Documentos WHERE id = ?", (doc_id,))
+        cursor.execute("DELETE FROM Documentos WHERE id = %s", (doc_id,))
         conn.commit()
     
-    conn.close()
+    db_manager.release_connection(conn)
     messagebox.showinfo("Éxito", "Documento eliminado")
     cargar_documentos(cedula_actual)
 
@@ -2312,9 +2335,9 @@ def seleccionar_status(st):
         # Si intenta cambiar a un status distinto del actual cargado en DB
         # Re-cargar el status original y salir
         conn, cursor = conectar_db()
-        cursor.execute("SELECT status FROM Microcreditos WHERE id = ?", (id_micro_actual,))
+        cursor.execute("SELECT status FROM Microcreditos WHERE id = %s", (id_micro_actual,))
         res = cursor.fetchone()
-        conn.close()
+        db_manager.release_connection(conn)
         original_st = res[0] if res else None
         
         if st != original_st:
@@ -2435,16 +2458,16 @@ def buscar_micro_auto(event=None):
     """
     
     if criteria == "cedula":
-         cursor.execute(query + " WHERE cedula = ?", (val,))
+         cursor.execute(query + " WHERE cedula = %s", (val,))
          res = cursor.fetchone()
     elif criteria == "ruc":
-         cursor.execute(query + " WHERE ruc = ?", (val,))
+         cursor.execute(query + " WHERE ruc = %s", (val,))
          res = cursor.fetchone()
     elif criteria == "nombre":
-         cursor.execute(query + " WHERE nombre LIKE ? LIMIT 1", (f"%{val}%",))
+         cursor.execute(query + " WHERE nombre LIKE %s LIMIT 1", (f"%{val}%",))
          res = cursor.fetchone()
     
-    conn.close()
+    db_manager.release_connection(conn)
     
     if res:
         # Avoid overwriting the active field to allow fluid typing
@@ -2525,9 +2548,9 @@ def buscar_micro_auto(event=None):
 def cargar_datos_micro(cedula):
     global id_micro_actual
     conn, cursor = conectar_db()
-    cursor.execute("SELECT * FROM Microcreditos WHERE cedula_cliente = ?", (cedula,))
+    cursor.execute("SELECT * FROM Microcreditos WHERE cedula_cliente = %s", (cedula,))
     row = cursor.fetchone()
-    conn.close()
+    db_manager.release_connection(conn)
     
     if row:
         id_micro_actual = row[0]
@@ -2623,19 +2646,19 @@ def guardar_microcredito():
     conn, cursor = conectar_db()
     try:
         # Update Clientes table for valor_apertura
-        cursor.execute("UPDATE Clientes SET valor_apertura = ? WHERE cedula = ?", (val_apertura, cedula_micro_actual))
+        cursor.execute("UPDATE Clientes SET valor_apertura = %s WHERE cedula = %s", (val_apertura, cedula_micro_actual))
 
         if id_micro_actual:
             # Update
             cursor.execute("""
                 UPDATE Microcreditos SET 
-                observaciones=?, observaciones_info=?,
-                ref1_relacion=?, ref1_tiempo_conocer=?, ref1_direccion=?, ref1_tipo_vivienda=?, ref1_cargas=?, ref1_patrimonio=?, ref1_responsable=?,
-                ref2_relacion=?, ref2_tiempo_conocer=?, ref2_direccion=?, ref2_tipo_vivienda=?, ref2_cargas=?, ref2_patrimonio=?, ref2_responsable=?,
-                ref1_fecha=?, ref1_hora=?, ref1_nombre=?, ref1_telefono=?,
-                ref2_fecha=?, ref2_hora=?, ref2_nombre=?, ref2_telefono=?,
-                status=?, sub_status=?, fecha_desembolsado=?, fecha_negado=?, fecha_desistimiento=?, fecha_comite=?
-                WHERE id=?
+                observaciones=%s, observaciones_info=%s,
+                ref1_relacion=%s, ref1_tiempo_conocer=%s, ref1_direccion=%s, ref1_tipo_vivienda=%s, ref1_cargas=%s, ref1_patrimonio=%s, ref1_responsable=%s,
+                ref2_relacion=%s, ref2_tiempo_conocer=%s, ref2_direccion=%s, ref2_tipo_vivienda=%s, ref2_cargas=%s, ref2_patrimonio=%s, ref2_responsable=%s,
+                ref1_fecha=%s, ref1_hora=%s, ref1_nombre=%s, ref1_telefono=%s,
+                ref2_fecha=%s, ref2_hora=%s, ref2_nombre=%s, ref2_telefono=%s,
+                status=%s, sub_status=%s, fecha_desembolsado=%s, fecha_negado=%s, fecha_desistimiento=%s, fecha_comite=%s
+                WHERE id=%s
             """, vals[2:] + (id_micro_actual,))
             msg = "Datos actualizados."
         else:
@@ -2648,7 +2671,7 @@ def guardar_microcredito():
                     ref1_fecha, ref1_hora, ref1_nombre, ref1_telefono,
                     ref2_fecha, ref2_hora, ref2_nombre, ref2_telefono,
                     status, sub_status, fecha_desembolsado, fecha_negado, fecha_desistimiento, fecha_comite
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, vals)
             msg = "Datos guardados."
             
@@ -2658,7 +2681,7 @@ def guardar_microcredito():
         cargar_datos_micro(cedula_micro_actual) # Recargar para obtener ID si fue insert
     except Exception as e:
         messagebox.showerror("Error", f"Error DB: {e}")
-    finally: conn.close()
+    finally: db_manager.release_connection(conn)
 
 
 
@@ -2721,15 +2744,15 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3", search_callback=None, 
             conn, cursor = conectar_db()
             res = None
             if criteria == "cedula":
-                 cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE cedula = ?", (val,))
+                 cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE cedula = %s", (val,))
                  res = cursor.fetchone()
             elif criteria == "ruc":
-                 cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE ruc = ?", (val,))
+                 cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE ruc = %s", (val,))
                  res = cursor.fetchone()
             elif criteria == "nombre":
-                 cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE nombre LIKE ? LIMIT 1", (f"%{val}%",))
+                 cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE nombre LIKE %s LIMIT 1", (f"%{val}%",))
                  res = cursor.fetchone()
-            conn.close()
+            db_manager.release_connection(conn)
             
             if res:
                 widget = event.widget if event else None
@@ -2795,9 +2818,9 @@ def abrir_modulo_usuarios():
             e_user.configure(border_color="grey")
             return
         conn, cursor = conectar_db()
-        cursor.execute("SELECT id FROM Usuarios WHERE usuario = ?", (u,))
+        cursor.execute("SELECT id FROM Usuarios WHERE usuario = %s", (u,))
         existe = cursor.fetchone()
-        conn.close()
+        db_manager.release_connection(conn)
         if existe: e_user.configure(border_color="red")
         else: e_user.configure(border_color="green")
 
@@ -2844,7 +2867,7 @@ def abrir_modulo_usuarios():
         for r in cursor.fetchall():
             est = "Activo" if r[3] == 1 else "Inactivo"
             tree.insert('', 'end', values=(r[0], r[1], r[2], est))
-        conn.close()
+        db_manager.release_connection(conn)
 
     def toggle_estado():
         sel = tree.selection()
@@ -2853,12 +2876,12 @@ def abrir_modulo_usuarios():
         user_nom = tree.item(sel[0])['values'][1]
         
         conn, cursor = conectar_db()
-        cursor.execute("SELECT estado FROM Usuarios WHERE id = ?", (user_id,))
+        cursor.execute("SELECT estado FROM Usuarios WHERE id = %s", (user_id,))
         est = cursor.fetchone()[0]
         nuevo_est = 0 if est == 1 else 1
-        cursor.execute("UPDATE Usuarios SET estado = ? WHERE id = ?", (nuevo_est, user_id))
+        cursor.execute("UPDATE Usuarios SET estado = %s WHERE id = %s", (nuevo_est, user_id))
         conn.commit()
-        conn.close()
+        db_manager.release_connection(conn)
         
         acc = "Desactivar" if nuevo_est == 0 else "Activar"
         registrar_auditoria(f"{acc} Usuario", detalles=f"Se cambió el estado del usuario {user_nom} a {acc}")
@@ -2893,9 +2916,9 @@ def abrir_modulo_rehabilitacion():
 
         var_cedula.set(cedula)
         conn, cursor = conectar_db()
-        cursor.execute("SELECT fecha_inicio, terminos, resultado, finalizado FROM Rehabilitacion WHERE cedula_cliente = ?", (cedula,))
+        cursor.execute("SELECT fecha_inicio, terminos, resultado, finalizado FROM Rehabilitacion WHERE cedula_cliente = %s", (cedula,))
         res = cursor.fetchone()
-        conn.close()
+        db_manager.release_connection(conn)
 
         txt_terminos.delete("1.0", tk.END)
         txt_resultado.delete("1.0", tk.END)
@@ -2926,7 +2949,7 @@ def abrir_modulo_rehabilitacion():
         try:
             cursor.execute("""
                 INSERT INTO Rehabilitacion (cedula_cliente, fecha_inicio, terminos, resultado, finalizado)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT(cedula_cliente) DO UPDATE SET
                 fecha_inicio=excluded.fecha_inicio,
                 terminos=excluded.terminos,
@@ -2939,7 +2962,7 @@ def abrir_modulo_rehabilitacion():
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar: {e}")
         finally:
-            conn.close()
+            db_manager.release_connection(conn)
 
     def toggle_finalizar():
         # Verificar nivel de admin para desbloquear
@@ -2981,9 +3004,9 @@ def abrir_modulo_rehabilitacion():
         if not ced: return
         
         conn, cursor = conectar_db()
-        cursor.execute("SELECT fecha, observaciones FROM visitas_microcredito WHERE cedula_cliente = ?", (ced,))
+        cursor.execute("SELECT fecha, observaciones FROM visitas_microcredito WHERE cedula_cliente = %s", (ced,))
         visitas = cursor.fetchall()
-        conn.close()
+        db_manager.release_connection(conn)
         
         if not visitas:
             messagebox.showinfo("Visitas", "No se encontraron visitas registradas para este cliente.")
@@ -3066,7 +3089,7 @@ def abrir_modulo_consultas():
             cursor.execute("""
                 SELECT status, sub_status, fecha_desembolsado, fecha_negado, 
                        fecha_desistimiento, fecha_comite 
-                FROM Microcreditos WHERE cedula_cliente = ?
+                FROM Microcreditos WHERE cedula_cliente = %s
             """, (cedula,))
             micro = cursor.fetchone()
             
@@ -3093,7 +3116,7 @@ def abrir_modulo_consultas():
                     res_fecha = "Pendiente"
             else:
                 # 2. Si no hay registro en Microcreditos, consultamos el producto en la ficha del Cliente
-                cursor.execute("SELECT producto, apertura FROM Clientes WHERE cedula = ?", (cedula,))
+                cursor.execute("SELECT producto, apertura FROM Clientes WHERE cedula = %s", (cedula,))
                 cli = cursor.fetchone()
                 if cli:
                     res_estado = (cli[0] or "CLIENTE REGISTRADO").upper()
@@ -3104,7 +3127,7 @@ def abrir_modulo_consultas():
         except Exception as e:
             print(f"Error en consulta de estados: {e}")
         finally:
-            conn.close()
+            db_manager.release_connection(conn)
 
     # Llamada al generador con el callback de búsqueda
     win, frame, nb = crear_modulo_generico("Módulo de Consultas", search_callback=actualizar_consultas)
@@ -3227,7 +3250,7 @@ def abrir_modulo_caja():
 
         conn, cursor = conectar_db()
         # 1. Intentar cargar desde Clientes para completar datos básicos
-        cursor.execute("SELECT nombre, ruc, email, direccion, telefono, estado_civil FROM Clientes WHERE cedula = ?", (cedula,))
+        cursor.execute("SELECT nombre, ruc, email, direccion, telefono, estado_civil FROM Clientes WHERE cedula = %s", (cedula,))
         cli = cursor.fetchone()
         if cli:
             var_nombres.set(cli[0] or "")
@@ -3240,9 +3263,9 @@ def abrir_modulo_caja():
                 var_estado_civil.set(cli[5])
         
         # 2. Intentar cargar desde Caja (sobrescribe lo anterior si hay datos específicos de Caja)
-        cursor.execute("SELECT * FROM Caja WHERE cedula = ?", (cedula,))
+        cursor.execute("SELECT * FROM Caja WHERE cedula = %s", (cedula,))
         caja = cursor.fetchone()
-        conn.close()
+        db_manager.release_connection(conn)
 
         if caja:
             # id, fecha, ced, ruc, nom, email, dir, tel, civil, asesor, buro, ruta, valor, num
@@ -3267,7 +3290,7 @@ def abrir_modulo_caja():
         conn, cursor = conectar_db()
         cursor.execute("SELECT numero_apertura FROM Caja ORDER BY id DESC LIMIT 1")
         last = cursor.fetchone()
-        conn.close()
+        db_manager.release_connection(conn)
         
         start_num = 1
         if last and last[0]:
@@ -3314,18 +3337,18 @@ def abrir_modulo_caja():
 
         conn, cursor = conectar_db()
         try:
-            cursor.execute("SELECT id FROM Caja WHERE cedula = ?", (ced,))
+            cursor.execute("SELECT id FROM Caja WHERE cedula = %s", (ced,))
             exists = cursor.fetchone()
             if exists:
                 cursor.execute("""
                     UPDATE Caja SET 
-                    fecha_hora=?, ruc=?, nombres_completos=?, email=?, direccion=?, telefono=?, estado_civil=?, asesor=?, buro_credito=?, buro_archivo_ruta=?, valor_apertura=?, numero_apertura=?
-                    WHERE cedula = ?
+                    fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
+                    WHERE cedula = %s
                 """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], ced))
             else:
                 cursor.execute("""
                     INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura) 
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, data)
             
             conn.commit()
@@ -3338,7 +3361,7 @@ def abrir_modulo_caja():
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar: {e}")
         finally:
-            conn.close()
+            db_manager.release_connection(conn)
 
     def toggle_buro_btn(*args):
         if var_buro.get() == "Sí":

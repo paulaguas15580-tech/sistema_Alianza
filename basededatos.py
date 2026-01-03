@@ -9,6 +9,9 @@ import subprocess
 from PIL import Image, ImageTk 
 import webbrowser
 import customtkinter as ctk
+import docx
+from docx2pdf import convert
+import time
 from db_manager import DatabaseManager
 import psycopg2.extras
 
@@ -174,7 +177,8 @@ def crear_tablas():
                 buro_credito TEXT,
                 buro_archivo_ruta TEXT,
                 valor_apertura REAL,
-                numero_apertura TEXT
+                numero_apertura TEXT,
+                estado_impreso TEXT
             )
         """)
 
@@ -3280,6 +3284,7 @@ def abrir_modulo_caja():
             var_buro_ruta.set(caja[11] or "")
             var_valor_apertura.set(formatear_float_str(caja[12]) if caja[12] else "")
             var_num_apertura.set(caja[13] or "")
+            # var_estado_impreso = caja[14]
         else:
             # Generar numero correlativo si es nuevo en Caja
             var_num_apertura.set(generar_correlativo_apertura())
@@ -3332,7 +3337,8 @@ def abrir_modulo_caja():
             var_buro.get(),
             var_buro_ruta.get(),
             limpiar_moneda(var_valor_apertura.get()),
-            var_num_apertura.get()
+            var_num_apertura.get(),
+            "Pendiente" # estado_impreso por defecto
         )
 
         conn, cursor = conectar_db()
@@ -3347,8 +3353,8 @@ def abrir_modulo_caja():
                 """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], ced))
             else:
                 cursor.execute("""
-                    INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura) 
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso) 
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, data)
             
             conn.commit()
@@ -3371,7 +3377,118 @@ def abrir_modulo_caja():
         validar_datos_caja()
 
     def imprimir_contrato():
-        messagebox.showinfo("Imprimir", "Función de impresión preparada. Pendiente de plantilla.")
+        if not validar_datos_caja(show_error=True):
+            return
+
+        ced = var_cedula.get().strip()
+        nom = var_nombres.get().strip()
+        civ = var_estado_civil.get()
+        dir_c = var_direccion.get().strip()
+        tel = var_telefono.get().strip()
+        mail = var_email.get().strip()
+        val = var_valor_apertura.get()
+        num_ap = var_num_apertura.get()
+
+        # Fecha en Español
+        meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+        now = datetime.datetime.now()
+        fecha_esp = f"{now.day:02d} de {meses[now.month-1]} de {now.year}"
+
+        plantillas = ["Contrato_Apertura.docx", "CARTA COMPROMISO DE AFILIACIÓN.docx"]
+        archivos_finales = []
+        
+        # Ruta del Servidor
+        ruta_base_servidor = r"\\SERVIDOR\Compartida\Contratos_Finales"
+        ruta_destino = os.path.join(ruta_base_servidor, ced)
+
+        try:
+            if not os.path.exists(ruta_destino):
+                try:
+                    os.makedirs(ruta_destino)
+                except Exception as e_dir:
+                    messagebox.showwarning("Aviso", f"No se pudo crear la ruta de red: {e_dir}. Se guardará localmente.")
+                    ruta_destino = os.path.join(os.getcwd(), "Contratos_Generados", ced)
+                    if not os.path.exists(ruta_destino): os.makedirs(ruta_destino)
+
+            msg_wait = ctk.CTkLabel(win, text="Generando PDF, por favor espere...", font=('Arial', 14, 'bold'), text_color="red")
+            msg_wait.place(relx=0.5, rely=0.1, anchor='center')
+            win.update()
+
+            reemplazos = {
+                "{Nombres Completos}": nom,
+                "{Cedula}": ced,
+                "{Estado Civil}": civ,
+                "{Domicilio Cliente}": dir_c,
+                "{Teléfono}": tel,
+                "{correo electrónico}": mail,
+                "{Valor de apertura}": val,
+                "{No. Apertura}": num_ap,
+                "{N Apertura}": num_ap,
+                "{Fecha Actual}": fecha_esp
+            }
+
+            for p_name in plantillas:
+                if not os.path.exists(p_name):
+                    messagebox.showerror("Error", f"Plantilla '{p_name}' no encontrada.")
+                    continue
+
+                doc = docx.Document(p_name)
+                # Reemplazo en párrafos
+                for p in doc.paragraphs:
+                    for key, val_r in reemplazos.items():
+                        if key in p.text:
+                            p.text = p.text.replace(key, val_r)
+                
+                # Reemplazo en tablas
+                for table in doc.tables:
+                    for row_t in table.rows:
+                        for cell in row_t.cells:
+                            for p in cell.paragraphs:
+                                for key, val_r in reemplazos.items():
+                                    if key in p.text:
+                                        p.text = p.text.replace(key, val_r)
+
+                # Guardar temporal
+                temp_name = f"temp_{p_name}"
+                doc.save(temp_name)
+
+                # Definir nombre final
+                if "Contrato" in p_name:
+                    final_name = f"Contrato_{num_ap.replace('-', '_')}.pdf"
+                else:
+                    final_name = f"Carta_Compromiso_{num_ap.replace('-', '_')}.pdf"
+                
+                pdf_path = os.path.join(ruta_destino, final_name)
+
+                # Convertir a PDF (requiere Word instalado)
+                try:
+                    convert(temp_name, pdf_path)
+                except Exception as e_pdf:
+                    raise Exception(f"Fallo al convertir PDF: {e_pdf}")
+                finally:
+                    if os.path.exists(temp_name):
+                        os.remove(temp_name)
+
+                archivos_finales.append(pdf_path)
+
+            # Actualizar PostgreSQL
+            conn, cursor = conectar_db()
+            cursor.execute("UPDATE Caja SET estado_impreso = %s WHERE cedula = %s", ("Impreso", ced))
+            conn.commit()
+            db_manager.release_connection(conn)
+
+            msg_wait.destroy()
+            messagebox.showinfo("Éxito", f"Documentos generados y guardados en:\n{ruta_destino}")
+
+            # Abrir automáticamente
+            for f in archivos_finales:
+                if os.path.exists(f):
+                    os.startfile(f)
+
+        except Exception as e:
+            if 'msg_wait' in locals(): msg_wait.destroy()
+            messagebox.showerror("Error", f"Error en el proceso de impresión: {e}")
+            registrar_auditoria("Error Impresión", id_cliente=ced, detalles=str(e))
 
     def buscar_cliente_caja(event=None):
         ced = var_cedula.get().strip()

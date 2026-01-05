@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <style>
@@ -7,6 +8,7 @@
             size: A4;
             margin: 2.5cm 3cm 2.5cm 3cm;
         }
+
         body {
             font-family: 'Calibri', 'Arial', sans-serif;
             font-size: 11pt;
@@ -14,6 +16,7 @@
             text-align: justify;
             color: #000;
         }
+
         .header {
             text-align: center;
             font-weight: bold;
@@ -21,6 +24,7 @@
             margin-bottom: 30px;
             text-decoration: underline;
         }
+
         .qr-header {
             position: absolute;
             top: 0;
@@ -33,15 +37,19 @@
             display: inline-block;
             text-align: center;
             vertical-align: top;
-            width: auto; /* Se ajusta al contenido */
+            width: auto;
+            /* Se ajusta al contenido */
         }
 
         /* Esta clase controla TU IMAGEN */
         .img-linea-firma {
-            width: 190px; /* Ancho fijo para que se vea profesional (aprox 5cm) */
-            height: 2px;  /* Altura de la línea */
+            width: 190px;
+            /* Ancho fijo para que se vea profesional (aprox 5cm) */
+            height: 2px;
+            /* Altura de la línea */
             display: block;
-            margin: 0 auto 5px auto; /* Centrado */
+            margin: 0 auto 5px auto;
+            /* Centrado */
         }
 
         .datos-firma {
@@ -52,26 +60,38 @@
 
         /* ESPACIADORES */
         .espacio-firma-fisica {
-            height: 2cm; /* Espacio para firmar */
+            height: 2cm;
+            /* Espacio para firmar */
         }
+
         .separador-niveles {
-            height: 3.5cm; /* Espacio vertical grande entre grupos */
+            height: 3.5cm;
+            /* Espacio vertical grande entre grupos */
             clear: both;
         }
     </style>
 </head>
+
 <body>
 
-    <div class="qr-header">
-        <img src="data:image/png;base64,{{ qr_code }}" style="width: 85px; height: 85px;">
-        <div style="font-size: 7pt;">Validación Alianza C3F</div>
+    <div style="text-align: right; width: 100%; margin-bottom: 20px;">
+        <img src="qr_temp.png" style="width: 85px; height: 85px;" alt="Código QR Validación">
+        <br>
+        <span style="font-size: 7pt; font-family: Arial;">Validación Alianza C3F</span>
     </div>
 
     <div class="header">CARTA COMPROMISO DE AFILIACIÓN</div>
 
-    <p>Yo <strong>{{ nombres_completos }}</strong>, identificado con C.C. No. <strong>{{ cedula }}</strong>, actuando en nombre propio, suscribo y me afilio de manera libre, voluntaria, espontanea, sin presiones de ninguna índole, con plenas capacidades para hacerlo, aceptando la presente carta de compromiso de afiliación a la Caja de Ahorro CrediVillal 3de Febrero bajo el siguiente término:</p>
+    <p>Yo <strong>{{ nombres_completos }}</strong>, identificado con C.C. No. <strong>{{ cedula }}</strong>, actuando en
+        nombre propio, suscribo y me afilio de manera libre, voluntaria, espontanea, sin presiones de ninguna índole,
+        con plenas capacidades para hacerlo, aceptando la presente carta de compromiso de afiliación a la Caja de Ahorro
+        CrediVillal 3de Febrero bajo el siguiente término:</p>
 
-    <p><strong>Primera: - Clase de afiliación y tiempo </strong> Acepto la afiliación a la Caja de Ahorro CrediVillal 3de Febrero, en la categoría de Persona Natural; por un tiempo mínimo de tres años a partir de la fecha de ingreso, en concordancia con lo que estipula el Art.453 del Código Orgánico Monetario y Financiero, <strong>Art. 106 del Reglamento de la Ley Orgánica de Economía Popular y Solidaria y el Estatuto social de la Caja de Ahorro en las especificaciones de deberes del socio</strong>.</p>
+    <p><strong>Primera: - Clase de afiliación y tiempo </strong> Acepto la afiliación a la Caja de Ahorro CrediVillal
+        3de Febrero, en la categoría de Persona Natural; por un tiempo mínimo de tres años a partir de la fecha de
+        ingreso, en concordancia con lo que estipula el Art.453 del Código Orgánico Monetario y Financiero, <strong>Art.
+            106 del Reglamento de la Ley Orgánica de Economía Popular y Solidaria y el Estatuto social de la Caja de
+            Ahorro en las especificaciones de deberes del socio</strong>.</p>
 
     <p>En constancia de aceptación y compromiso, se firma en la Ciudad de Quito, a los {{ fecha_actual }}.</p>
 
@@ -122,4 +142,5 @@
     </div>
 
 </body>
+
 </html>

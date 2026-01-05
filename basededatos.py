@@ -16,9 +16,18 @@ import time
 import tempfile
 import qrcode
 import base64
-import io
+from io import BytesIO
 from db_manager import DatabaseManager
 import psycopg2.extras
+
+def generar_qr_base64(texto):
+    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+    qr.add_data(texto)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 # --- CONFIGURACIÓN CUSTOMTKINTER ---
 ctk.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
@@ -3569,21 +3578,6 @@ def abrir_modulo_caja():
         win.update()
 
         try:
-            # --- GENERAR CÓDIGO QR INDUSTRIAL ---
-            # Contenido: Apertura | Fecha | Socio
-            qr_text = f"Apertura: {num_ap} | Fecha: {fecha_esp} | Socio: {nom}"
-            qr_gen = qrcode.QRCode(version=1, box_size=10, border=5)
-            qr_gen.add_data(qr_text)
-            qr_gen.make(fit=True)
-            img_qr = qr_gen.make_image(fill_color="black", back_color="white")
-            
-            buffered = io.BytesIO()
-            img_qr.save(buffered, format="PNG")
-            # Sin prefijo data:image/... para mayor flexibilidad si el usuario ya lo tiene en el HTML
-            # Pero el usuario pidió: <img src="data:image/png;base64,{{ qr_code }}">
-            # Así que pasaremos solo el Base64 puro para completar su etiqueta
-            qr_base64_pure = base64.b64encode(buffered.getvalue()).decode()
-
             # Contexto Jinja2 Superior
             contexto = {
                 "nombres_completos": str(nom),
@@ -3597,9 +3591,22 @@ def abrir_modulo_caja():
                 "correo": str(mail), # Alias para compatibilidad
                 "valor_apertura": str(val),
                 "no_apertura": str(num_ap),
-                "fecha_actual": str(fecha_esp),
-                "qr_code": qr_base64_pure
+                "fecha_actual": str(fecha_esp)
             }
+
+            # 1. Generar la data completa para el QR
+            info_qr = f"Apertura: {num_ap} | Fecha: {fecha_esp} | Cliente: {nom} | Valor: ${val}"
+            
+            # 2. Crear el QR
+            qr = qrcode.QRCode(box_size=10, border=1)
+            qr.add_data(info_qr)
+            qr.make(fit=True)
+            img_qr = qr.make_image(fill_color="black", back_color="white")
+            
+            # 3. Guardar la imagen física (CRÍTICO: Usamos el mismo nombre de archivo que funcionó)
+            ruta_qr = os.path.join("Documento Plantilla", "qr_temp.png")
+            img_qr.save(ruta_qr)
+            print(f"Generando PDF... QR guardado físicamente en: {ruta_qr}")
 
             # Configurar Jinja2
             env = Environment(loader=FileSystemLoader(ruta_plantillas))

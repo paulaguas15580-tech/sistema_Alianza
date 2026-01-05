@@ -7,7 +7,7 @@
         /* Configuración de página idéntica a Word */
         @page {
             size: A4;
-            margin: 2.5cm 3cm 2.5cm 3cm;
+            margin: 2.0cm 3cm 2.0cm 3cm;
         }
 
         body {
@@ -107,7 +107,7 @@
 
     <div class="no-apertura">N.º: {{ no_apertura }}</div>
 
-    <p>En la ciudad de Quito a los {{ fecha_actual }}, comparecen por una parte, la entidad financiera denominada
+    <p>En la ciudad de Quito a, {{ fecha_actual }}, comparecen por una parte, la entidad financiera denominada
         <strong>Caja De Ahorro Credivillal 3 De Febrero</strong>, legalmente representada por el/la señor/a Erik Rafael
         Alomoto Alquinga portador/a de la cédula de ciudadanía No. 050461726-7, a quien en adelante se le denominará
         Caja De Ahorro Credivillal 3 De Febrero; Y por otra parte, el/la señor/a <strong>{{ nombres_completos
@@ -154,14 +154,16 @@
     <div class="seccion">QUINTA: AUTORIZACIONES</div>
     <p>EL/LA ASOCIADO/A autoriza a LA ENTIDAD a descontar de sus fondos cualquier obligación pendiente. En caso de
         pérdida de documentos, deberá notificar inmediatamente y realizar los trámites correspondientes.</p>
-    <p><strong>SEXTA: NORMATIVA APLICABLE</strong></p>
+    <div class="seccion">SEXTA: NORMATIVA APLICABLE</div>
     <div class="lista-compacta">
         <div class="item-lista">Se regirá por lo dispuesto en:</div>
-        <div class="item-lista">- Ley Orgánica de Economía Popular y Solidaria: artículos 29 y 49</div>
-        <div class="item-lista">- Resolución Nro. 675-2021-F, de 19 de agosto de 2021: artículos 5, 6, 7 y 14</div>
+        <div class="item-lista">-Ley Orgánica de Economía Popular y Solidaria: artículos 29 y 49</div>
+        <div class="item-lista">-Resolución Nro. SEPS-IGT-IGS-IGJ-INSESF-INGINT-0690 de 10 de diciembre de 2021.</div>
+        <div class="item-lista">-Resolución Nro. SEPS-IGT-IGS-IGJ-INSESF-INGINT-2025-0215 de 28 de noviembre de 2025.
+        </div>
     </div>
     <p>
-    <p><strong>SÉPTIMA: TERMINACIÓN DEL CONTRATO</strong></p>
+    <div class="seccion">SÉPTIMA: TERMINACIÓN DEL CONTRATO</div>
     <div class="lista-compacta">
         <div class="item-lista">El contrato podrá finalizar:</div>
         <div class="item-lista">1. A voluntad del ASOCIADO/A</div>
@@ -227,14 +229,14 @@
 
         /* Huella centrada y reducida */
         .img-huella-debajo {
-            width: 1.8cm;
+            width: 2.2cm;
             height: auto;
             display: block;
             margin: 10px auto 0 auto;
         }
     </style>
 
-    <p>Firmado en Quito, a los {{ fecha_actual }}.</p>
+    <p>Firmado en Quito, a, {{ fecha_actual }}.</p>
 
     <table style="width: 100%; border-collapse: collapse; margin-top: 60px;">
         <tr>

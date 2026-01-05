@@ -84,7 +84,7 @@
     <p>En constancia de aceptación y compromiso, se firma en la Ciudad de Quito, a los {{ fecha_actual }}.</p>
 
     <style>
-        /* Estilos definitivos y consistentes */
+        /* Estilos de firma compactos */
         .bloque-firma {
             display: inline-block;
             text-align: center;
@@ -96,21 +96,24 @@
             width: auto;
             height: auto;
             display: block;
-            margin: 0 auto 1px auto;
-            /* Línea pegada al nombre (1px) */
+            margin: 0 auto 0 auto;
+            /* Margen CERO absoluto en la imagen */
         }
 
         .datos-firma {
             font-size: 10pt;
             font-weight: bold;
-            line-height: 1.1;
-            margin-top: 0;
+            line-height: 1.0;
+            /* Interlineado muy compacto */
+
+            /* EL TRUCO: Margen negativo para subir el texto y reducir el espacio un 50% */
+            margin-top: -5px;
             padding-top: 0;
         }
 
         .espacio-firma-fisica {
             height: 3.25cm;
-            /* Espacio para firmar */
+            /* Espacio cómodo para firmar */
         }
 
         .separador-niveles {

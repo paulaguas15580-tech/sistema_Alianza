@@ -198,7 +198,7 @@
 
 
     <style>
-        /* Estilos de firma */
+        /* Estilos de firma compactos */
         .bloque-firma {
             display: inline-block;
             text-align: center;
@@ -208,24 +208,26 @@
 
         .img-linea-firma {
             width: auto;
-            /* Tamaño natural de la imagen */
             height: auto;
             display: block;
-            margin: 0 auto 1px auto;
-            /* 1px de separación con el nombre (mínimo) */
+            margin: 0 auto 0 auto;
+            /* Margen CERO absoluto en la imagen */
         }
 
         .datos-firma {
             font-size: 10pt;
             font-weight: bold;
-            line-height: 1.1;
-            margin-top: 0;
+            line-height: 1.0;
+            /* Interlineado muy compacto */
+
+            /* EL TRUCO: Margen negativo para subir el texto y reducir el espacio un 50% */
+            margin-top: -5px;
             padding-top: 0;
         }
 
         .espacio-firma-fisica {
             height: 3.25cm;
-            /* Altura cómoda para firmar */
+            /* Espacio cómodo para firmar */
         }
     </style>
 

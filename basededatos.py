@@ -3538,6 +3538,11 @@ def abrir_modulo_caja():
         ruta_plantillas = os.path.join(base_dir, "Documento Plantilla")
         ruta_base_servidor = r"\\SERVIDOR\Compartida\Contratos_Finales"
         ruta_destino = os.path.join(ruta_base_servidor, ident)
+
+        def fetch_resources(uri, rel):
+            """Resuelve rutas de recursos para xhtml2pdf."""
+            if os.path.isabs(uri): return uri
+            return os.path.join(ruta_plantillas, uri)
         
         # Validación de acceso al servidor con fallback local
         try:
@@ -3621,11 +3626,14 @@ def abrir_modulo_caja():
                 # 3. Conversión HTML a PDF (Motor xhtml2pdf)
                 try:
                     with open(pdf_path, "wb") as pdf_file:
-                        pisa_status = pisa.CreatePDF(html_out, dest=pdf_file)
+                        pisa_status = pisa.CreatePDF(html_out, dest=pdf_file, link_callback=fetch_resources)
                         
                     if pisa_status.err:
                         raise Exception(f"Fallo en motor xhtml2pdf para {t_name}")
                         
+                except PermissionError:
+                    messagebox.showerror("Error de Acceso", f"No se puede guardar el archivo:\n{final_name}\n\nPor favor, cierre el documento si lo tiene abierto en otro programa e intente nuevamente.")
+                    return
                 except Exception as e_pdf:
                     raise Exception(f"Error generando PDF desde HTML: {e_pdf}")
 

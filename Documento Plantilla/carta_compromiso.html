@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
     <style>
@@ -8,7 +7,6 @@
             size: A4;
             margin: 2.5cm 3cm 2.5cm 3cm;
         }
-
         body {
             font-family: 'Calibri', 'Arial', sans-serif;
             font-size: 11pt;
@@ -16,7 +14,6 @@
             text-align: justify;
             color: #000;
         }
-
         .header {
             text-align: center;
             font-weight: bold;
@@ -24,115 +21,105 @@
             margin-bottom: 30px;
             text-decoration: underline;
         }
-
-        /* Estilo para el Código QR en la esquina superior */
         .qr-header {
             position: absolute;
-            top: 10px;
+            top: 0;
             right: 0;
             text-align: center;
         }
 
-        /* Estenedor principal de firmas */
-        .seccion-firmas {
-            width: 100%;
-            margin-top: 30px;
-        }
-
-        /* Bloque rígido de 5cm para la línea */
+        /* --- CONFIGURACIÓN DE FIRMA CON IMAGEN --- */
         .bloque-firma {
-            width: 5cm;
+            display: inline-block;
             text-align: center;
-            margin: 0 auto;
+            vertical-align: top;
+            width: auto; /* Se ajusta al contenido */
         }
 
-        .linea-negra {
-            border-top: 1px solid black;
-            width: 100%;
-            margin-bottom: 5px;
+        /* Esta clase controla TU IMAGEN */
+        .img-linea-firma {
+            width: 190px; /* Ancho fijo para que se vea profesional (aprox 5cm) */
+            height: 2px;  /* Altura de la línea */
+            display: block;
+            margin: 0 auto 5px auto; /* Centrado */
         }
 
         .datos-firma {
-            font-size: 9pt;
+            font-size: 10pt;
             font-weight: bold;
             line-height: 1.2;
         }
 
-        .huella-box {
-            width: 60px;
-            height: 80px;
-            border: 1px solid black;
-            margin: 0 auto 5px auto;
+        /* ESPACIADORES */
+        .espacio-firma-fisica {
+            height: 2cm; /* Espacio para firmar */
+        }
+        .separador-niveles {
+            height: 3.5cm; /* Espacio vertical grande entre grupos */
+            clear: both;
         }
     </style>
 </head>
-
 <body>
 
     <div class="qr-header">
-        <img src="data:image/png;base64,{{ qr_code }}" style="width: 90px; height: 90px;">
-        <p style="font-size: 7pt; margin: 0;">Validación Alianza C3F</p>
+        <img src="data:image/png;base64,{{ qr_code }}" style="width: 85px; height: 85px;">
+        <div style="font-size: 7pt;">Validación Alianza C3F</div>
     </div>
 
     <div class="header">CARTA COMPROMISO DE AFILIACIÓN</div>
 
-    <p>Yo <strong>{{ nombres_completos }}</strong>, identificado con C.C. No. <strong>{{ cedula }}</strong>, actuando en
-        nombre propio, suscribo y me afilio de manera libre, voluntaria, espontanea, sin presiones de ninguna índole,
-        con plenas capacidades para hacerlo, aceptando la presente carta de compromiso de afiliación a la Caja de Ahorro
-        CrediVillal 3de Febrero bajo el siguiente término::</p>
+    <p>Yo <strong>{{ nombres_completos }}</strong>, identificado con C.C. No. <strong>{{ cedula }}</strong>, actuando en nombre propio, suscribo y me afilio de manera libre, voluntaria, espontanea, sin presiones de ninguna índole, con plenas capacidades para hacerlo, aceptando la presente carta de compromiso de afiliación a la Caja de Ahorro CrediVillal 3de Febrero bajo el siguiente término:</p>
 
-    <p><strong>Primera: - Clase de afiliación y tiempo </strong> Acepto la afiliación a la Caja de Ahorro CrediVillal
-        3de Febrero, en la categoría de Persona Natural; por un tiempo mínimo de tres años a partir de la fecha de
-        ingreso, en concordancia con lo que estipula el Art.453 del Código Orgánico Monetario y Financiero, <strong>Art.
-            106 del Reglamento de la Ley Orgánica de Economía Popular y Solidaria y el Estatuto social de la Caja de
-            Ahorro en las especificaciones de deberes del socio</strong>.</p>
+    <p><strong>Primera: - Clase de afiliación y tiempo </strong> Acepto la afiliación a la Caja de Ahorro CrediVillal 3de Febrero, en la categoría de Persona Natural; por un tiempo mínimo de tres años a partir de la fecha de ingreso, en concordancia con lo que estipula el Art.453 del Código Orgánico Monetario y Financiero, <strong>Art. 106 del Reglamento de la Ley Orgánica de Economía Popular y Solidaria y el Estatuto social de la Caja de Ahorro en las especificaciones de deberes del socio</strong>.</p>
 
     <p>En constancia de aceptación y compromiso, se firma en la Ciudad de Quito, a los {{ fecha_actual }}.</p>
 
-    <div class="seccion-firmas" style="text-align: center; margin-top: 50px;">
-        <div class="huella-box"></div>
-        <div style="font-size: 8pt; margin-bottom: 5px;">HUELLA DIGITAL</div>
+    <div style="text-align: right; margin-top: 10px; font-weight: bold;">
+        &lt;Apertura de Cuenta No. {{ no_apertura }}&gt;
+    </div>
+
+    <div style="text-align: center; margin-top: 20px;">
         <div class="bloque-firma">
-            <div class="linea-negra"></div>
+            <div class="espacio-firma-fisica">&nbsp;</div>
+            <img src="linea_firma.png" class="img-linea-firma">
             <div class="datos-firma">
                 {{ nombres_completos }}<br>
-                C.I. {{ cedula }}
+                {{ cedula }}
             </div>
-            <div style="font-size: 9pt; font-weight: normal;">(Firma solicitante)</div>
         </div>
     </div>
 
-    <table style="width: 100%; margin-top: 50px; border-collapse: collapse;">
+    <div class="separador-niveles">&nbsp;</div>
+
+    <table style="width: 100%; border-collapse: collapse;">
         <tr>
-            <td style="width: 50%; text-align: center;">
+            <td style="width: 50%; text-align: center; vertical-align: bottom;">
                 <div class="bloque-firma">
-                    <div style="height: 60px;"></div>
-                    <div class="linea-negra"></div>
+                    <div class="espacio-firma-fisica">&nbsp;</div>
+                    <img src="linea_firma.png" class="img-linea-firma">
                     <div class="datos-firma">Gerente General</div>
                 </div>
             </td>
-            <td style="width: 50%; text-align: center;">
+            <td style="width: 50%; text-align: center; vertical-align: bottom;">
                 <div class="bloque-firma">
-                    <div style="height: 60px;"></div>
-                    <div class="linea-negra"></div>
+                    <div class="espacio-firma-fisica">&nbsp;</div>
+                    <img src="linea_firma.png" class="img-linea-firma">
                     <div class="datos-firma">Presidencia</div>
                 </div>
             </td>
         </tr>
     </table>
 
-    <div class="seccion-firmas" style="margin-top: 40px; text-align: center;">
+    <div class="separador-niveles">&nbsp;</div>
+
+    <div style="text-align: center;">
         <div class="bloque-firma">
-            <div style="height: 60px;"></div>
-            <div class="linea-negra"></div>
+            <div class="espacio-firma-fisica">&nbsp;</div>
+            <img src="linea_firma.png" class="img-linea-firma">
             <div class="datos-firma">Secretaría General</div>
         </div>
     </div>
 
-    <div style="text-align: right; margin-top: 20px; font-weight: bold;">
-        &lt;Apertura de Cuenta No. {{ no_apertura }}&gt;
-    </div>
-
 </body>
-
 </html>

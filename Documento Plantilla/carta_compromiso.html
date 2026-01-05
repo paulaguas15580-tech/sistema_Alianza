@@ -84,7 +84,7 @@
     <p>En constancia de aceptación y compromiso, se firma en la Ciudad de Quito, a los {{ fecha_actual }}.</p>
 
     <style>
-        /* Estilos idénticos al Contrato para consistencia */
+        /* Estilos definitivos y consistentes */
         .bloque-firma {
             display: inline-block;
             text-align: center;
@@ -94,46 +94,40 @@
 
         .img-linea-firma {
             width: auto;
-            /* Se ajusta a tu imagen */
             height: auto;
             display: block;
-            /* AQUÍ ESTÁ EL ARREGLO: Margen de 1px para "bajar" la línea */
             margin: 0 auto 1px auto;
+            /* Línea pegada al nombre (1px) */
         }
 
         .datos-firma {
             font-size: 10pt;
             font-weight: bold;
             line-height: 1.1;
-            /* Líneas del nombre bien juntas */
             margin-top: 0;
-            /* Sin espacio arriba del nombre */
             padding-top: 0;
         }
 
         .espacio-firma-fisica {
             height: 3.25cm;
-            /* Espacio amplio para firmar (esfero) */
+            /* Espacio para firmar */
         }
 
         .separador-niveles {
             height: 2.5cm;
-            /* Espacio vertical entre el Cliente y los Gerentes */
             width: 100%;
             clear: both;
         }
     </style>
 
-    <div style="text-align: right; margin-top: 40px; margin-bottom: 20px; font-weight: bold;">
+    <div style="text-align: right; margin-top: 40px; margin-bottom: 40px; font-weight: bold;">
         &lt;Apertura de Cuenta No. {{ no_apertura }}&gt;
     </div>
 
     <div style="text-align: center;">
         <div class="bloque-firma">
             <div class="espacio-firma-fisica">&nbsp;</div>
-
             <img src="linea_firma.png" class="img-linea-firma" alt="Firma">
-
             <div class="datos-firma">
                 {{ nombres_completos }}<br>
                 {{ cedula }}

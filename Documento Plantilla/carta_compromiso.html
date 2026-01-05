@@ -84,7 +84,7 @@
     <p>En constancia de aceptación y compromiso, se firma en la Ciudad de Quito, a los {{ fecha_actual }}.</p>
 
     <style>
-        /* Estilos de firma compactos */
+        /* Estilos de firma */
         .bloque-firma {
             display: inline-block;
             text-align: center;
@@ -97,23 +97,29 @@
             height: auto;
             display: block;
             margin: 0 auto 0 auto;
-            /* Margen CERO absoluto en la imagen */
         }
 
         .datos-firma {
             font-size: 10pt;
             font-weight: bold;
             line-height: 1.0;
-            /* Interlineado muy compacto */
-
-            /* EL TRUCO: Margen negativo para subir el texto y reducir el espacio un 50% */
             margin-top: -5px;
+            /* Margen negativo para pegar el texto a la línea */
             padding-top: 0;
         }
 
         .espacio-firma-fisica {
             height: 3.25cm;
-            /* Espacio cómodo para firmar */
+        }
+
+        /* NUEVO ESTILO PARA LA IMAGEN DE HUELLA */
+        .img-huella-box {
+            width: 2.5cm;
+            /* Ancho ajustado para que se vea bien */
+            height: auto;
+            display: block;
+            /* Ajuste fino para alinear verticalmente con el texto de la firma */
+            margin-bottom: 5px;
         }
 
         .separador-niveles {
@@ -127,16 +133,24 @@
         &lt;Apertura de Cuenta No. {{ no_apertura }}&gt;
     </div>
 
-    <div style="text-align: center;">
-        <div class="bloque-firma">
-            <div class="espacio-firma-fisica">&nbsp;</div>
-            <img src="linea_firma.png" class="img-linea-firma" alt="Firma">
-            <div class="datos-firma">
-                {{ nombres_completos }}<br>
-                {{ cedula }}
-            </div>
-        </div>
-    </div>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr>
+            <td style="width: 55%; text-align: right; vertical-align: bottom; padding-right: 20px;">
+                <div class="bloque-firma">
+                    <div class="espacio-firma-fisica">&nbsp;</div>
+                    <img src="linea_firma.png" class="img-linea-firma" alt="Firma">
+                    <div class="datos-firma">
+                        {{ nombres_completos }}<br>
+                        {{ cedula }}
+                    </div>
+                </div>
+            </td>
+
+            <td style="width: 45%; text-align: left; vertical-align: bottom;">
+                <img src="huella_placeholder.png" class="img-huella-box" alt="Huella Digital">
+            </td>
+        </tr>
+    </table>
 
     <div class="separador-niveles">&nbsp;</div>
 

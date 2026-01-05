@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        /* Configuración de página idéntica a Word */
+        @page {
+            size: A4;
+            margin: 2.5cm 3cm 2.5cm 3cm;
+        }
+
+        body {
+            font-family: 'Calibri', 'Arial', sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            text-align: justify;
+            color: #000;
+        }
+
+        /* Estilo para el Código QR en la esquina superior */
+        .qr-header {
+            position: absolute;
+            top: -1cm;
+            right: 0;
+            text-align: center;
+        }
+
+        .header-title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 12pt;
+            margin-bottom: 20px;
+        }
+
+        .no-apertura {
+            text-align: right;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .seccion {
+            font-weight: bold;
+            margin-top: 15px;
+            text-decoration: underline;
+        }
+
+        /* Contenedor de Firmas y Huella */
+        .tabla-firmas {
+            width: 100%;
+            margin-top: 50px;
+            border-collapse: collapse;
+        }
+
+        .col-firma {
+            width: 50%;
+            text-align: center;
+            vertical-align: top;
+        }
+
+        .linea-firma {
+            border-top: 1px solid black;
+            width: 80%;
+            margin: 0 auto;
+            padding-top: 5px;
+        }
+
+        /* Cuadro de Huella Digital */
+        .huella-box {
+            width: 60px;
+            height: 80px;
+            border: 1px solid black;
+            margin: 10px auto;
+        }
+
+        .huella-texto {
+            font-size: 8pt;
+            font-weight: normal;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="qr-header">
+        <img src="data:image/png;base64,{{ qr_code }}" style="width: 85px; height: 85px;">
+        <div style="font-size: 7pt;">Validación Digital</div>
+    </div>
+
+    <div class="header-title">CONTRATO DE VINCULACIÓN PARA CERTIFICADOS DE APORTACIÓN Y SERVICIOS FINANCIEROS</div>
+
+    <div class="no-apertura">N.º: {{ no_apertura }}</div>
+
+    <p>En la ciudad de Quito a los {{ fecha_actual }}, comparecen por una parte, la entidad financiera denominada
+        <strong>Caja De Ahorro Credivillal 3 De Febrero</strong>, legalmente representada por el/la señor/a Erik Rafael
+        Alomoto Alquinga portador/a de la cédula de ciudadanía No. 050461726-7, a quien en adelante se le denominará Caja De Ahorro Credivillal 3 De Febrero; Y por otra parte, el/la señor/a <strong>{{ nombres_completos }}</strong> portador/a de la cédula de ciudadanía
+        No. <strong>{{ cedula }}</strong>; mayor de edad, de estado civil {{ estado_civil }}, con domicilio en {{
+        domicilio }}, teléfono {{ telefono }} y correo electrónico {{ correo }} en adelante denominado/a EL/LA ASOCIADO/A.</p>
+    <p>Las partes, libre y voluntariamente, acuerdan suscribir el presente documento bajo las siguientes estipulaciones.</p>
+
+    <div class="seccion">PRIMERA: ANTECEDENTES</div>
+    <p>EL/LA ASOCIADO/A manifiesta su voluntad de vincularse a LA ENTIDAD, mediante la apertura de un Certificado de Aportes, habiendo efectuado el pago correspondiente por un valor de  <strong>${{ valor_apertura }}</strong> lo que le otorga la calidad de socio. Esta condición le faculta para acceder a los productos y servicios ofrecidos, incluidos aquellos provistos mediante canales digitales.</p>
+    <p>El número de cuenta asignado es: <strong>{{ no_apertura }}</strong>.</p>
+
+    <div class="seccion">SEGUNDA: CONDICIONES GENERALES</div>
+    <p>1. La apertura de cuenta se efectuará en dólares estadounidenses, previa realización del depósito inicial voluntario.</p>
+    <p>2. EL/LA ASOCIADO/A declara que la información y documentación entregada es verídica, y acepta que LA ENTIDAD podrá verificar su autenticidad.</p>
+    <p>3. EL/LA ASOCIADO/A otorga su consentimiento para que LA ENTIDAD reporte o informe cualquier actividad que resulte sospechosa ante autoridades competentes.</p>
+    <p>4. Se compromete a mantener actualizada la información personal suministrada.</p>
+    <p>5. Toda modificación de datos debe realizarse de forma presencial o por medios habilitados por LA ENTIDAD.</p>
+    <p>6. Certifica que los fondos utilizados en sus operaciones tienen origen lícito.</p>
+    <p>7. Autoriza el uso de su cuenta para efectuar pagos u operaciones, según convenios vigentes.</p>
+    <p>8. LA ENTIDAD se compromete a brindar sus servicios con responsabilidad y calidad.</p>
+    <div class="seccion">TERCERA: COSTOS Y TARIFAS</div>
+    <p>Los servicios ofrecidos estarán sujetos a tarifas reguladas o diferenciadas, conforme a la normativa vigente y las políticas internas, de conocimiento del cliente.</p>
+    <div class="seccion">CUARTA: MANEJO DE LA CUENTA</div>
+    <p>EL/LA ASOCIADO/A deberá respetar las condiciones de uso establecidas. En caso de fallecimiento del titular, la disposición de fondos se realizará conforme a la ley y lineamientos institucionales.</p>
+    <div class="seccion">QUINTA: AUTORIZACIONES</div>
+    <p>EL/LA ASOCIADO/A autoriza a LA ENTIDAD a descontar de sus fondos cualquier obligación pendiente. En caso de pérdida de documentos, deberá notificar inmediatamente y realizar los trámites correspondientes.</p>
+    <div class="seccion">SEXTA: NORMATIVA APLICABLE</div>
+    <p>Se regirá por lo dispuesto en:    <p>
+    <p>- Ley Orgánica de Economía Popular y Solidaria: artículos 29 y 49    <p>
+    <p>- Resolución Nro. 675-2021-F, de 19 de agosto de 2021: artículos 5, 6, 7 y 14<p>
+    <div class="seccion">SÉPTIMA: TERMINACIÓN DEL CONTRATO</div>
+    <p>El contrato podrá finalizar:    <p>
+    <p>1. A voluntad del ASOCIADO/A    <p>
+    <p>2. Por decisión del Consejo de Administración<p>
+    <p>3. Por orden judicial o de autoridad competente<p>
+    <p>4. Por disposición de órganos de regulación financiera<p>
+
+    <p>LA ENTIDAD podrá dar por terminado este acuerdo, previa notificación escrita con al menos 30 días de antelación.</p>
+    <div class="seccion">OCTAVA: DEVOLUCION Y CIERRE DE CUENTA</div>
+    <p>EL/LA ASOCIADO/A podrá presentar por escrito su retiro voluntario, por un tiempo mínimo de tres años a partir de la fecha de ingreso, en concordancia con lo que estipula el Art.453 del Código Orgánico Monetario y Financiero, Art. 106 del Reglamento de la Ley Orgánica de Economía Popular y Solidaria y el Estatuto social de la Caja de Ahorro en las especificaciones de deberes del socio., detallando los hechos. LA ENTIDAD resolverá dentro del plazo de 15 días hábiles la respuesta con respaldo del artículo 55. – Devolución de Aportes del reglamento interno, la Caja de Ahorro, en la liquidación se procederá a deducir el monto de las obligaciones o deudas vencidas contraídas con la entidad en calidad de prestatario, endosante, deudor o fijador. Para la liquidación y devolución de los certificados de aportación, el consejo de administración procederá de conformidad con el estatuto social.</p>
+    <div class="seccion">NOVENA: PROTECCIÓN DE DATOS</div>
+    <p>Los datos entregados serán tratados confidencialmente y únicamente para fines institucionales. Al firmar este documento, EL/LA ASOCIADO/A autoriza la verificación y tratamiento de su información conforme a la política vigente de protección de datos.</p>
+    <div class="seccion">DÉCIMA: JURISDICCIÓN</div>
+    <p>Para resolver controversias, ambas partes se someten a la jurisdicción de los jueces del lugar donde LA ENTIDAD tenga su oficina matriz.</p>
+    <div class="seccion">DÉCIMA PRIMERA: ACEPTACIÓN</div>
+    <p>EL/LA ASOCIADO/A declara haber leído, comprendido y aceptado todas las cláusulas del presente contrato, así como las políticas, derechos y deberes que se le han informado previamente.</p>
+    <div class="seccion">DÉCIMA SEGUNDA: MODIFICACIONES</div>
+    <p>Cualquier cambio será válido únicamente si cuenta con la aprobación del órgano de control correspondiente y la aceptación expresa de EL/LA ASOCIADO/A.</p>
+
+
+
+    <p style="margin-top: 40px;">Firmado en Quito, a los {{ fecha_actual }}.</p>
+
+    <table class="tabla-firmas">
+        <tr>
+            <td class="col-firma">
+                <div style="height: 100px;"></div>
+                <div class="linea-firma">
+                    <strong>Erik Rafael Alomoto Alquinga</strong><br>
+                    RUC: 1793225790001
+                </div>
+            </td>
+
+            <td class="col-firma">
+                <div class="huella-box"></div>
+                <div class="huella-texto">HUELLA DIGITAL</div>
+
+                <div style="height: 20px;"></div>
+
+                <div class="linea-firma">
+                    <strong>{{ nombres_completos }}</strong><br>
+                    C.I.: {{ cedula }}
+                </div>
+            </td>
+        </tr>
+    </table>
+
+</body>
+
+</html>

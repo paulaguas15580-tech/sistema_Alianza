@@ -10,8 +10,13 @@ from PIL import Image, ImageTk
 import webbrowser
 import customtkinter as ctk
 import docx
-from docx2pdf import convert
+from jinja2 import Environment, FileSystemLoader
+from xhtml2pdf import pisa
 import time
+import tempfile
+import qrcode
+import base64
+import io
 from db_manager import DatabaseManager
 import psycopg2.extras
 
@@ -443,10 +448,18 @@ def migrar_db():
                     buro_credito TEXT,
                     buro_archivo_ruta TEXT,
                     valor_apertura REAL,
-                    numero_apertura TEXT
+                    numero_apertura TEXT,
+                    estado_impreso TEXT DEFAULT 'Pendiente'
                 )
             """)
             conn.commit()
+        else:
+            # Si existe, verificar si falta estado_impreso
+            cols_caja = get_column_names(cursor, 'Caja')
+            if 'estado_impreso' not in cols_caja:
+                print("Migrando DB: Agregando columna 'estado_impreso' a Caja...")
+                cursor.execute("ALTER TABLE Caja ADD COLUMN estado_impreso TEXT DEFAULT 'Pendiente'")
+                conn.commit()
             
         # Migración Usuario Admin -> Paul
         cursor.execute("SELECT id FROM Usuarios WHERE usuario='admin'")
@@ -3200,16 +3213,37 @@ def abrir_modulo_caja():
             messagebox.showinfo("Éxito", "Archivo adjuntado correctamente.")
             validar_datos_caja()
 
+    def toggle_id_fields(*args):
+        ced = var_cedula.get().strip()
+        ruc = var_ruc.get().strip()
+        
+        if ced:
+            e_ruc.configure(state="disabled", fg_color="#F0F0F0")
+        else:
+            e_ruc.configure(state="normal", fg_color="white")
+            
+        if ruc:
+            e_ced.configure(state="disabled", fg_color="#F0F0F0")
+        else:
+            e_ced.configure(state="normal", fg_color="white")
+    
     def validar_datos_caja(show_error=False):
         # Campos básicos obligatorios
-        basic_fields = [
-            (var_cedula, "Cédula"),
-            (var_ruc, "RUC"),
+        ced = var_cedula.get().strip()
+        ruc = var_ruc.get().strip()
+        
+        if not ced and not ruc:
+            if show_error:
+                messagebox.showerror("Error", "Debe completar el campo 'Cédula' o 'RUC' antes de continuar.")
+            return False
+            
+        # Otros campos obligatorios
+        other_fields = [
             (var_nombres, "Nombres Completos"),
             (var_asesor, "Nombre del Asesor")
         ]
         
-        for var, field_name in basic_fields:
+        for var, field_name in other_fields:
             if not var.get().strip():
                 if show_error:
                     messagebox.showerror("Error", f"Debe completar el campo '{field_name}' antes de continuar.")
@@ -3312,12 +3346,14 @@ def abrir_modulo_caja():
         ced = var_cedula.get().strip()
         ruc = var_ruc.get().strip()
         
-        if not ced:
-            messagebox.showwarning("Atención", "Ingrese la cédula del cliente.")
+        identificacion = ced if ced else ruc
+        
+        if not identificacion:
+            messagebox.showwarning("Atención", "Ingrese la identificación del cliente (Cédula o RUC).")
             return
             
         # Validación numérica
-        if not ced.isdigit():
+        if ced and not ced.isdigit():
             messagebox.showwarning("Error", "La Cédula debe contener solo números.")
             return
         if ruc and not ruc.isdigit():
@@ -3343,19 +3379,38 @@ def abrir_modulo_caja():
 
         conn, cursor = conectar_db()
         try:
-            cursor.execute("SELECT id FROM Caja WHERE cedula = %s", (ced,))
+            cursor.execute("SELECT id FROM Caja WHERE cedula = %s OR (cedula = '' AND ruc = %s)", (ced, ruc))
             exists = cursor.fetchone()
-            if exists:
-                cursor.execute("""
-                    UPDATE Caja SET 
-                    fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
-                    WHERE cedula = %s
-                """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], ced))
-            else:
-                cursor.execute("""
-                    INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso) 
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, data)
+            
+            # Usaremos una lógica elástica por si falla la columna estado_impreso
+            try:
+                if exists:
+                    cursor.execute("""
+                        UPDATE Caja SET 
+                        fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
+                        WHERE id = %s
+                    """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], exists[0]))
+                else:
+                    # Incluimos estado_impreso explícitamente en el INSERT normal
+                    cursor.execute("""
+                        INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso) 
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, data)
+            except Exception as e_sql:
+                # Si falla por la columna, intentamos guardar lo básico
+                print(f"Error de columna en Caja (reintentando): {e_sql}")
+                if exists:
+                    cursor.execute("""
+                        UPDATE Caja SET 
+                        fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
+                        WHERE id = %s
+                    """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], exists[0]))
+                else:
+                    # INSERT sin la columna conflictiva
+                    cursor.execute("""
+                        INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura) 
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, data[:-1])
             
             conn.commit()
             messagebox.showinfo("Éxito", "Datos de Caja guardados correctamente.")
@@ -3376,11 +3431,100 @@ def abrir_modulo_caja():
             btn_adjuntar.configure(state="disabled", fg_color="grey", text="📎 Adjuntar Buró (PDF/IMG)")
         validar_datos_caja()
 
+    def aplicar_reemplazo_total(doc, reemplazos):
+        """
+        Motor de reemplazo de alto nivel. Unifica runs para evitar fragmentación
+        de etiquetas y recorre recursivamente párrafos y tablas.
+        """
+        def procesar_contenedor(parrafos):
+            for p in parrafos:
+                # Verificar si el párrafo contiene alguna clave
+                found = False
+                for key in reemplazos.keys():
+                    if key in p.text:
+                        found = True
+                        break
+                
+                if found:
+                    # Unificación de Runs: Colapsamos todo el texto en el primer run
+                    # Esto garantiza que etiquetas como {No. Apertura} se lean completas
+                    full_text = p.text
+                    for key, val in reemplazos.items():
+                        full_text = full_text.replace(key, str(val))
+                    
+                    if p.runs:
+                        # Guardamos el estilo del primer run si es posible
+                        p.runs[0].text = full_text
+                        # Limpiamos el resto de runs para evitar duplicados
+                        for i in range(1, len(p.runs)):
+                            p.runs[i].text = ""
+                    else:
+                        p.text = full_text
+
+        # 1. Párrafos del cuerpo principal
+        procesar_contenedor(doc.paragraphs)
+        
+        # 2. Iteración profunda en tablas (celdas y sus párrafos)
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    procesar_contenedor(cell.paragraphs)
+
+    def guardar_caja_silencioso():
+        """Guarda los datos en la DB sin mostrar mensajes ni limpiar campos."""
+        ced = var_cedula.get().strip()
+        ruc = var_ruc.get().strip()
+        identificacion = ced if ced else ruc
+        if not identificacion: return
+        
+        data = (
+            var_fecha_hora.get(),
+            ced,
+            ruc,
+            var_nombres.get().strip(),
+            var_email.get().strip(),
+            var_direccion.get().strip(),
+            var_telefono.get().strip(),
+            var_estado_civil.get(),
+            var_asesor.get().strip(),
+            var_buro.get(),
+            var_buro_ruta.get(),
+            limpiar_moneda(var_valor_apertura.get()),
+            var_num_apertura.get(),
+            "Pendiente"
+        )
+        
+        conn, cursor = conectar_db()
+        try:
+            cursor.execute("SELECT id FROM Caja WHERE cedula = %s OR (cedula = '' AND ruc = %s)", (ced, ruc))
+            exists = cursor.fetchone()
+            if exists:
+                cursor.execute("""
+                    UPDATE Caja SET 
+                    fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
+                    WHERE id = %s
+                """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], exists[0]))
+            else:
+                cursor.execute("""
+                    INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso) 
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, data)
+            conn.commit()
+        except:
+            pass
+        finally:
+            db_manager.release_connection(conn)
+
     def imprimir_contrato():
         if not validar_datos_caja(show_error=True):
             return
+        
+        # 0. Sincronizar DB antes de imprimir (PostgreSQL)
+        guardar_caja_silencioso()
 
         ced = var_cedula.get().strip()
+        ruc = var_ruc.get().strip()
+        ident = ced if ced else ruc
         nom = var_nombres.get().strip()
         civ = var_estado_civil.get()
         dir_c = var_direccion.get().strip()
@@ -3389,119 +3533,141 @@ def abrir_modulo_caja():
         val = var_valor_apertura.get()
         num_ap = var_num_apertura.get()
 
+        # Configuración de Rutas Dinámicas
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        ruta_plantillas = os.path.join(base_dir, "Documento Plantilla")
+        ruta_base_servidor = r"\\SERVIDOR\Compartida\Contratos_Finales"
+        ruta_destino = os.path.join(ruta_base_servidor, ident)
+        
+        # Validación de acceso al servidor con fallback local
+        try:
+            if not os.path.exists(ruta_destino):
+                os.makedirs(ruta_destino)
+        except Exception as e_red:
+            print(f"Servidor no accesible: {e_red}")
+            ruta_destino = os.path.join(base_dir, "Respaldo_PDF", ident)
+            if not os.path.exists(ruta_destino):
+                os.makedirs(ruta_destino)
+            messagebox.showwarning("Modo Respaldo", f"El servidor no está disponible. Los archivos se guardarán localmente en:\n{ruta_destino}")
+
         # Fecha en Español
         meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
         now = datetime.datetime.now()
         fecha_esp = f"{now.day:02d} de {meses[now.month-1]} de {now.year}"
 
-        plantillas = ["Contrato_Apertura.docx", "CARTA COMPROMISO DE AFILIACIÓN.docx"]
+        # Plantillas HTML ajustadas
+        plantillas = ["contrato.html", "carta_compromiso.html"]
         archivos_finales = []
         
-        # Ruta del Servidor
-        ruta_base_servidor = r"\\SERVIDOR\Compartida\Contratos_Finales"
-        ruta_destino = os.path.join(ruta_base_servidor, ced)
+        msg_wait = ctk.CTkLabel(win, text="Generando PDF (Motor Industrial), por favor espere...", font=('Arial', 14, 'bold'), text_color="red")
+        msg_wait.place(relx=0.5, rely=0.1, anchor='center')
+        win.update()
 
         try:
-            if not os.path.exists(ruta_destino):
-                try:
-                    os.makedirs(ruta_destino)
-                except Exception as e_dir:
-                    messagebox.showwarning("Aviso", f"No se pudo crear la ruta de red: {e_dir}. Se guardará localmente.")
-                    ruta_destino = os.path.join(os.getcwd(), "Contratos_Generados", ced)
-                    if not os.path.exists(ruta_destino): os.makedirs(ruta_destino)
+            # --- GENERAR CÓDIGO QR INDUSTRIAL ---
+            # Contenido: Apertura | Fecha | Socio
+            qr_text = f"Apertura: {num_ap} | Fecha: {fecha_esp} | Socio: {nom}"
+            qr_gen = qrcode.QRCode(version=1, box_size=10, border=5)
+            qr_gen.add_data(qr_text)
+            qr_gen.make(fit=True)
+            img_qr = qr_gen.make_image(fill_color="black", back_color="white")
+            
+            buffered = io.BytesIO()
+            img_qr.save(buffered, format="PNG")
+            # Sin prefijo data:image/... para mayor flexibilidad si el usuario ya lo tiene en el HTML
+            # Pero el usuario pidió: <img src="data:image/png;base64,{{ qr_code }}">
+            # Así que pasaremos solo el Base64 puro para completar su etiqueta
+            qr_base64_pure = base64.b64encode(buffered.getvalue()).decode()
 
-            msg_wait = ctk.CTkLabel(win, text="Generando PDF, por favor espere...", font=('Arial', 14, 'bold'), text_color="red")
-            msg_wait.place(relx=0.5, rely=0.1, anchor='center')
-            win.update()
-
-            reemplazos = {
-                "{Nombres Completos}": nom,
-                "{Cedula}": ced,
-                "{Estado Civil}": civ,
-                "{Domicilio Cliente}": dir_c,
-                "{Teléfono}": tel,
-                "{correo electrónico}": mail,
-                "{Valor de apertura}": val,
-                "{No. Apertura}": num_ap,
-                "{N Apertura}": num_ap,
-                "{Fecha Actual}": fecha_esp
+            # Contexto Jinja2 Superior
+            contexto = {
+                "nombres_completos": str(nom),
+                "cedula": str(ced),
+                "ruc": str(ruc),
+                "estado_civil": str(civ),
+                "direccion_domicilio": str(dir_c),
+                "domicilio": str(dir_c), # Alias para compatibilidad
+                "telefono": str(tel),
+                "correo_electronico": str(mail),
+                "correo": str(mail), # Alias para compatibilidad
+                "valor_apertura": str(val),
+                "no_apertura": str(num_ap),
+                "fecha_actual": str(fecha_esp),
+                "qr_code": qr_base64_pure
             }
 
-            for p_name in plantillas:
-                if not os.path.exists(p_name):
-                    messagebox.showerror("Error", f"Plantilla '{p_name}' no encontrada.")
+            # Configurar Jinja2
+            env = Environment(loader=FileSystemLoader(ruta_plantillas))
+
+            for t_name in plantillas:
+                full_t_path = os.path.join(ruta_plantillas, t_name)
+                if not os.path.exists(full_t_path):
+                    messagebox.showerror("Error", f"Plantilla HTML estratégica no encontrada en:\n{full_t_path}")
                     continue
 
-                doc = docx.Document(p_name)
-                # Reemplazo en párrafos
-                for p in doc.paragraphs:
-                    for key, val_r in reemplazos.items():
-                        if key in p.text:
-                            p.text = p.text.replace(key, val_r)
-                
-                # Reemplazo en tablas
-                for table in doc.tables:
-                    for row_t in table.rows:
-                        for cell in row_t.cells:
-                            for p in cell.paragraphs:
-                                for key, val_r in reemplazos.items():
-                                    if key in p.text:
-                                        p.text = p.text.replace(key, val_r)
+                # 1. Renderizado de alta precisión
+                template = env.get_template(t_name)
+                html_out = template.render(contexto)
 
-                # Guardar temporal
-                temp_name = f"temp_{p_name}"
-                doc.save(temp_name)
-
-                # Definir nombre final
-                if "Contrato" in p_name:
-                    final_name = f"Contrato_{num_ap.replace('-', '_')}.pdf"
+                # 2. Definir nombre final del PDF industrial
+                clean_ap = num_ap.replace('-', '_').replace('/', '_')
+                if "contrato" in t_name.lower():
+                    final_name = f"Contrato_{clean_ap}.pdf"
                 else:
-                    final_name = f"Carta_Compromiso_{num_ap.replace('-', '_')}.pdf"
+                    final_name = f"Carta_Compromiso_{clean_ap}.pdf"
                 
                 pdf_path = os.path.join(ruta_destino, final_name)
 
-                # Convertir a PDF (requiere Word instalado)
+                # 3. Conversión HTML a PDF (Motor xhtml2pdf)
                 try:
-                    convert(temp_name, pdf_path)
+                    with open(pdf_path, "wb") as pdf_file:
+                        pisa_status = pisa.CreatePDF(html_out, dest=pdf_file)
+                        
+                    if pisa_status.err:
+                        raise Exception(f"Fallo en motor xhtml2pdf para {t_name}")
+                        
                 except Exception as e_pdf:
-                    raise Exception(f"Fallo al convertir PDF: {e_pdf}")
-                finally:
-                    if os.path.exists(temp_name):
-                        os.remove(temp_name)
+                    raise Exception(f"Error generando PDF desde HTML: {e_pdf}")
 
                 archivos_finales.append(pdf_path)
 
-            # Actualizar PostgreSQL
-            conn, cursor = conectar_db()
-            cursor.execute("UPDATE Caja SET estado_impreso = %s WHERE cedula = %s", ("Impreso", ced))
-            conn.commit()
-            db_manager.release_connection(conn)
+            # 4. Sincronización final de estado 'Impreso' en PostgreSQL
+            try:
+                conn, cursor = conectar_db()
+                cursor.execute("UPDATE Caja SET estado_impreso = %s WHERE cedula = %s OR (cedula = '' AND ruc = %s)", ("Impreso", ced, ruc))
+                conn.commit()
+                db_manager.release_connection(conn)
+            except Exception as e_status:
+                print(f"No se pudo actualizar el estado impreso industrial en DB: {e_status}")
 
-            msg_wait.destroy()
-            messagebox.showinfo("Éxito", f"Documentos generados y guardados en:\n{ruta_destino}")
+            messagebox.showinfo("Éxito", f"Documentos industriales generados correctamente en:\n{ruta_destino}")
 
-            # Abrir automáticamente
+            # Apertura automática para validación inmediata
             for f in archivos_finales:
                 if os.path.exists(f):
                     os.startfile(f)
 
         except Exception as e:
-            if 'msg_wait' in locals(): msg_wait.destroy()
-            messagebox.showerror("Error", f"Error en el proceso de impresión: {e}")
-            registrar_auditoria("Error Impresión", id_cliente=ced, detalles=str(e))
+            messagebox.showerror("Error", f"Fallo crítico en motor de impresión industrial: {e}")
+            registrar_auditoria("Fallo Motor Impresión", id_cliente=ident, detalles=str(e))
+        finally:
+            msg_wait.destroy()
 
     def buscar_cliente_caja(event=None):
-        ced = var_cedula.get().strip()
-        if len(ced) == 10 and ced.isdigit():
-             cargar_datos_caja(ced)
+        ident = var_cedula.get().strip()
+        if not ident:
+            ident = var_ruc.get().strip()
+            
+        if (len(ident) == 10 or len(ident) == 13) and ident.isdigit():
+             cargar_datos_caja(ident)
 
     # UI
     win, frame_info, nb = crear_modulo_generico("Caja", tab_name="Información", search_callback=cargar_datos_caja, show_search=False)
     nb.configure(command=on_tab_change)
     actualizar_fecha()
     
-    var_cedula.trace_add("write", lambda *a: validar_datos_caja())
-    var_ruc.trace_add("write", lambda *a: validar_datos_caja())
+    var_cedula.trace_add("write", lambda *a: (validar_datos_caja(), toggle_id_fields()))
+    var_ruc.trace_add("write", lambda *a: (validar_datos_caja(), toggle_id_fields()))
     var_nombres.trace_add("write", lambda *a: validar_datos_caja())
     var_asesor.trace_add("write", lambda *a: validar_datos_caja())
     var_buro.trace_add("write", lambda *a: validar_datos_caja())
@@ -3525,7 +3691,11 @@ def abrir_modulo_caja():
     
     row += 1
     ctk.CTkLabel(grid_info, text="RUC:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    ctk.CTkEntry(grid_info, textvariable=var_ruc, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=10)
+    e_ruc = ctk.CTkEntry(grid_info, textvariable=var_ruc, width=350, fg_color="white", text_color="black")
+    e_ruc.grid(row=row, column=1, padx=20, pady=10)
+    
+    # Inicializar estados
+    toggle_id_fields()
     
     row += 1
     ctk.CTkLabel(grid_info, text="Nombres Completos:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)

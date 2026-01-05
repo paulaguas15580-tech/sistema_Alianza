@@ -733,7 +733,7 @@ def saltar_campo(event):
     event.widget.tk_focusNext().focus()
     return "break"
 
-
+def obtener_campos_ui():
     return (
         e_cedula.get().strip(), e_ruc.get().strip(), e_nombre.get().strip(),
         c_civil.get(), e_cargas.get().strip(), e_email.get().strip(), e_telf.get().strip(),

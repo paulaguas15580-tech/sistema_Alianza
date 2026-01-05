@@ -321,6 +321,11 @@ def migrar_db():
             cursor.execute("ALTER TABLE Clientes ADD COLUMN valor_apertura REAL")
             conn.commit()
 
+        if 'fecha_registro' not in columnas:
+            print("Migrando DB: Agregando columna 'fecha_registro'...")
+            cursor.execute("ALTER TABLE Clientes ADD COLUMN fecha_registro TEXT")
+            conn.commit()
+
         # Migración Usuarios
         cols_user = get_column_names(cursor, 'Usuarios')
         if 'estado' not in cols_user:
@@ -558,7 +563,7 @@ def guardar_cliente(*args):
         cursor.execute("""
             INSERT INTO Clientes (
                 cedula, ruc, nombre, estado_civil, cargas_familiares, email, telefono, direccion, parroquia, 
-                tipo_vivienda, referencia_vivienda, profesion, ingresos_mensuales, fuente_ingreso, terreno, valor_terreno, hipotecado, referencia1, referencia2, asesor, apertura, numero_carpeta, 
+                tipo_vivienda, referencia_vivienda, profesion, ingresos_mensuales, fuente_ingreso, terreno, valor_terreno, hipotecado, referencia1, referencia2, asesor, fecha_registro, apertura, 
                 "fecha nacimiento", producto, observaciones, 
                 "cartera castigada", "valor cartera", "demanda judicial", "valor demanda", "problemas justicia", "detalle justicia",
                 casa_dep, valor_casa_dep, hipotecado_casa_dep, local, valor_local, hipotecado_local,
@@ -592,16 +597,17 @@ def sincronizar_cliente_desde_caja(cedula, ruc, nombre, email, direccion, telefo
         cursor.execute("SELECT id FROM Clientes WHERE cedula = %s", (cedula,))
         exists = cursor.fetchone()
         if exists:
+            # MAPEO CORREGIDO: apertura -> num_carpeta, fecha_registro -> fecha_apertura
             cursor.execute("""
                 UPDATE Clientes SET 
-                ruc=%s, nombre=%s, email=%s, direccion=%s, telefono=%s, asesor=%s, apertura=%s, numero_carpeta=%s
+                ruc=%s, nombre=%s, email=%s, direccion=%s, telefono=%s, asesor=%s, apertura=%s, fecha_registro=%s
                 WHERE id = %s
-            """, (ruc, nombre, email, direccion, telefono, asesor, fecha_apertura, num_carpeta, exists[0]))
+            """, (ruc, nombre, email, direccion, telefono, asesor, num_carpeta, fecha_apertura, exists[0]))
         else:
             cursor.execute("""
-                INSERT INTO Clientes (cedula, ruc, nombre, email, direccion, telefono, asesor, apertura, numero_carpeta) 
+                INSERT INTO Clientes (cedula, ruc, nombre, email, direccion, telefono, asesor, apertura, fecha_registro) 
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (cedula, ruc, nombre, email, direccion, telefono, asesor, fecha_apertura, num_carpeta))
+            """, (cedula, ruc, nombre, email, direccion, telefono, asesor, num_carpeta, fecha_apertura))
         conn.commit()
     except Exception as e:
         print(f"Error sincronizando cliente desde caja: {e}")
@@ -645,12 +651,12 @@ def actualizar_cliente(id_cliente, *args):
         cursor.execute("""
             UPDATE Clientes SET 
             cedula=%s, ruc=%s, nombre=%s, estado_civil=%s, cargas_familiares=%s, email=%s, telefono=%s, direccion=%s, parroquia=%s, 
-            tipo_vivienda=%s, referencia_vivienda=%s, profesion=%s, ingresos_mensuales=%s, fuente_ingreso=%s, terreno=%s, valor_terreno=%s, hipotecado=%s, referencia1=%s, referencia2=%s, asesor=%s, apertura=%s, numero_carpeta=%s, 
+            tipo_vivienda=%s, referencia_vivienda=%s, profesion=%s, ingresos_mensuales=%s, fuente_ingreso=%s, terreno=%s, valor_terreno=%s, hipotecado=%s, referencia1=%s, referencia2=%s, asesor=%s, fecha_registro=%s, apertura=%s, 
             "fecha nacimiento"=%s, producto=%s, observaciones=%s, 
             "cartera castigada"=%s, "valor cartera"=%s, "demanda judicial"=%s, "valor demanda"=%s, "problemas justicia"=%s, "detalle justicia"=%s,
             casa_dep=%s, valor_casa_dep=%s, hipotecado_casa_dep=%s, local=%s, valor_local=%s, hipotecado_local=%s,
             ingresos_mensuales_2=%s, fuente_ingreso_2=%s, score_buro=%s, egresos=%s, total_disponible=%s
-            WHERE id=%s
+            WHERE id = %s
         """, (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
               prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, prod, obs, 
               cart, val_cart, dem, val_dem, just, det_just,
@@ -778,10 +784,11 @@ def mostrar_datos_tree():
     for i in tree.get_children(): tree.delete(i)
     data = consultar_clientes()
     for row in data:
-        ing_fmt = "$ " + formatear_float_str(row[12])
-        # ID, Cedula, Nombre, Telf, Ingresos, Sit.Financiera (CHECKBOX), Producto, Carpeta(N.Apertura), Asesor
-        sf = "Terreno: Si" if (len(row) > 29 and row[29] == 1) else ""
-        visual = (row[0], row[1], row[3], row[7], ing_fmt, sf, row[19], row[17], row[15])
+        ing_fmt = "$ " + formatear_float_str(row['ingresos_mensuales'] if row['ingresos_mensuales'] else 0)
+        # ID, Cedula, Nombre, Telf, Ingresos, Sit.Financiera (CHECKBOX), Producto, N.Apertura(apertura), Asesor
+        sf = "Terreno: Si" if ('terreno' in row.keys() and row['terreno'] == 1) else ""
+        # MAPEO CORREGIDO: Apertura (UI) muestra el numero de carpeta guardado en 'apertura' (DB)
+        visual = (row['id'], row['cedula'], row['nombre'], row['telefono'], ing_fmt, sf, row['producto'], row['apertura'], row['asesor'])
         tree.insert('', tk.END, values=visual)
 
 def accion_guardar():
@@ -830,7 +837,7 @@ def cargar_seleccion(event):
     
     if not val: return
 
-    ID_CLIENTE_SELECCIONADO = val[0]
+    ID_CLIENTE_SELECCIONADO = val['id']
     
     elementos = [e_cedula, e_ruc, e_nombre, e_cargas, e_email, e_telf, e_dir, e_parroquia, e_ref_vivienda,
                  e_profesion, e_ingresos, e_ref1, e_ref2, e_asesor, e_apertura, e_carpeta, e_nacimiento, 
@@ -839,51 +846,54 @@ def cargar_seleccion(event):
     t_obs.delete("1.0", tk.END)
     
     try:
-        e_cedula.insert(0, val[1])
-        if val[2]: e_ruc.insert(0, val[2])
-        e_nombre.insert(0, val[3])
-        if val[4]: c_civil.set(val[4])
-        if val[5]: e_cargas.insert(0, val[5])
-        if val[6]: e_email.insert(0, val[6])
-        if val[7]: e_telf.insert(0, val[7])
-        if val[8]: e_dir.insert(0, val[8])
-        if val[9]: e_parroquia.insert(0, val[9])
-        if val[10]: c_vivienda.set(val[10])
-        if val[11]: e_profesion.insert(0, val[11])
+        e_cedula.insert(0, val['cedula'])
+        if val['ruc']: e_ruc.insert(0, val['ruc'])
+        e_nombre.insert(0, val['nombre'])
+        if val['estado_civil']: c_civil.set(val['estado_civil'])
+        if val['cargas_familiares']: e_cargas.insert(0, val['cargas_familiares'])
+        if val['email']: e_email.insert(0, val['email'])
+        if val['telefono']: e_telf.insert(0, val['telefono'])
+        if val['direccion']: e_dir.insert(0, val['direccion'])
+        if val['parroquia']: e_parroquia.insert(0, val['parroquia'])
+        if val['tipo_vivienda']: c_vivienda.set(val['tipo_vivienda'])
+        if val['profesion']: e_profesion.insert(0, val['profesion'])
         
-        if val[12]: e_ingresos.insert(0, formatear_float_str(val[12]))
+        if val['ingresos_mensuales']: e_ingresos.insert(0, formatear_float_str(val['ingresos_mensuales']))
         
-        if len(val) > 38 and val[38]: c_fuente_ingreso.set(val[38])
+        if 'fuente_ingreso' in val.keys() and val['fuente_ingreso']: c_fuente_ingreso.set(val['fuente_ingreso'])
             
-        if val[13]: e_ref1.insert(0, val[13])
-        if val[14]: e_ref2.insert(0, val[14])
-        if val[15]: e_asesor.insert(0, val[15])
-        if val[16]: e_apertura.insert(0, val[16])
-        if val[17]: e_carpeta.insert(0, val[17])
-        if val[18]: e_nacimiento.insert(0, val[18])
-        if val[19]: c_producto.set(val[19])
-        if val[20]: t_obs.insert("1.0", val[20])
+        if val['referencia1']: e_ref1.insert(0, val['referencia1'])
+        if val['referencia2']: e_ref2.insert(0, val['referencia2'])
+        if val['asesor']: e_asesor.insert(0, val['asesor'])
         
-        var_cartera.set(val[21])
-        if val[22]: e_val_cartera.insert(0, formatear_float_str(val[22]))
+        # MAPEO CORREGIDO PARA CARGA USANDO NOMBRES:
+        if 'fecha_registro' in val.keys() and val['fecha_registro']: e_apertura.insert(0, val['fecha_registro'])
+        if val['apertura']: e_carpeta.insert(0, val['apertura'])
         
-        var_demanda.set(val[23])
-        if val[24]: e_val_demanda.insert(0, formatear_float_str(val[24]))
+        if val['fecha nacimiento']: e_nacimiento.insert(0, val['fecha nacimiento'])
+        if val['producto']: c_producto.set(val['producto'])
+        if val['observaciones']: t_obs.insert("1.0", val['observaciones'])
         
-        var_justicia.set(val[25])
-        if val[26]: e_det_justicia.insert(0, val[26])
+        var_cartera.set(val['cartera castigada'])
+        if val['valor cartera']: e_val_cartera.insert(0, formatear_float_str(val['valor cartera']))
+        
+        var_demanda.set(val['demanda judicial'])
+        if val['valor demanda']: e_val_demanda.insert(0, formatear_float_str(val['valor demanda']))
+        
+        var_justicia.set(val['problemas justicia'])
+        if val['detalle justicia']: e_det_justicia.insert(0, val['detalle justicia'])
         
         toggle_legal_fields()
 
-        if len(val) > 27 and val[27]: e_ref_vivienda.insert(0, val[27])
-        # Ignoramos val[28] que era situacion_financiera texto antiguo
-        if len(val) > 29: var_terreno.set(val[29] if val[29] else 0)
-        if len(val) > 30 and val[30]: e_valor_terreno.insert(0, formatear_float_str(val[30]))
-        if len(val) > 31 and val[31]: c_hipotecado.set(val[31])
+        if 'referencia_vivienda' in val.keys() and val['referencia_vivienda']: e_ref_vivienda.insert(0, val['referencia_vivienda'])
         
-        if len(val) > 32: var_casa.set(val[32] if val[32] else 0)
-        if len(val) > 33 and val[33]: e_valor_casa.insert(0, formatear_float_str(val[33]))
-        if len(val) > 34 and val[34]: c_hip_casa.set(val[34])
+        if 'terreno' in val.keys(): var_terreno.set(val['terreno'] if val['terreno'] else 0)
+        if 'valor_terreno' in val.keys() and val['valor_terreno']: e_valor_terreno.insert(0, formatear_float_str(val['valor_terreno']))
+        if 'hipotecado' in val.keys() and val['hipotecado']: c_hipotecado.set(val['hipotecado'])
+        
+        if 'casa_dep' in val.keys(): var_casa.set(val['casa_dep'] if val['casa_dep'] else 0)
+        if 'valor_casa_dep' in val.keys() and val['valor_casa_dep']: e_valor_casa.insert(0, formatear_float_str(val['valor_casa_dep']))
+        if 'hipotecado_casa_dep' in val.keys() and val['hipotecado_casa_dep']: c_hip_casa.set(val['hipotecado_casa_dep'])
         
         if len(val) > 35: var_local.set(val[35] if val[35] else 0)
         if len(val) > 36 and val[36]: e_valor_local.insert(0, formatear_float_str(val[36]))

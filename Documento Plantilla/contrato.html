@@ -77,6 +77,21 @@
             font-size: 8pt;
             font-weight: normal;
         }
+
+        .lista-compacta {
+            margin-top: 5px;
+            margin-bottom: 15px;
+            padding-left: 20px;
+            /* Sangría ligera */
+        }
+
+        .item-lista {
+            margin-bottom: 3px;
+            /* Espacio mínimo entre líneas (Simple) */
+            line-height: 1.2;
+            /* Altura de línea compacta */
+            text-align: justify;
+        }
     </style>
 </head>
 
@@ -112,17 +127,24 @@
     <p>El número de cuenta asignado es: <strong>{{ no_apertura }}</strong>.</p>
 
     <div class="seccion">SEGUNDA: CONDICIONES GENERALES</div>
-    <p>1. La apertura de cuenta se efectuará en dólares estadounidenses, previa realización del depósito inicial
-        voluntario.</p>
-    <p>2. EL/LA ASOCIADO/A declara que la información y documentación entregada es verídica, y acepta que LA ENTIDAD
-        podrá verificar su autenticidad.</p>
-    <p>3. EL/LA ASOCIADO/A otorga su consentimiento para que LA ENTIDAD reporte o informe cualquier actividad que
-        resulte sospechosa ante autoridades competentes.</p>
-    <p>4. Se compromete a mantener actualizada la información personal suministrada.</p>
-    <p>5. Toda modificación de datos debe realizarse de forma presencial o por medios habilitados por LA ENTIDAD.</p>
-    <p>6. Certifica que los fondos utilizados en sus operaciones tienen origen lícito.</p>
-    <p>7. Autoriza el uso de su cuenta para efectuar pagos u operaciones, según convenios vigentes.</p>
-    <p>8. LA ENTIDAD se compromete a brindar sus servicios con responsabilidad y calidad.</p>
+    <div class="lista-compacta">
+        <div class="item-lista">1. La apertura de cuenta se efectuará en dólares estadounidenses, previa realización del
+            depósito inicial
+            voluntario.</div>
+        <div class="item-lista">2. EL/LA ASOCIADO/A declara que la información y documentación entregada es verídica, y
+            acepta que LA ENTIDAD
+            podrá verificar su autenticidad.</div>
+        <div class="item-lista">3. EL/LA ASOCIADO/A otorga su consentimiento para que LA ENTIDAD reporte o informe
+            cualquier actividad que
+            resulte sospechosa ante autoridades competentes.</div>
+        <div class="item-lista">4. Se compromete a mantener actualizada la información personal suministrada.</div>
+        <div class="item-lista">5. Toda modificación de datos debe realizarse de forma presencial o por medios
+            habilitados por LA ENTIDAD.</div>
+        <div class="item-lista">6. Certifica que los fondos utilizados en sus operaciones tienen origen lícito.</div>
+        <div class="item-lista">7. Autoriza el uso de su cuenta para efectuar pagos u operaciones, según convenios
+            vigentes.</div>
+        <div class="item-lista">8. LA ENTIDAD se compromete a brindar sus servicios con responsabilidad y calidad.</div>
+    </div>
     <div class="seccion">TERCERA: COSTOS Y TARIFAS</div>
     <p>Los servicios ofrecidos estarán sujetos a tarifas reguladas o diferenciadas, conforme a la normativa vigente y
         las políticas internas, de conocimiento del cliente.</p>
@@ -132,25 +154,21 @@
     <div class="seccion">QUINTA: AUTORIZACIONES</div>
     <p>EL/LA ASOCIADO/A autoriza a LA ENTIDAD a descontar de sus fondos cualquier obligación pendiente. En caso de
         pérdida de documentos, deberá notificar inmediatamente y realizar los trámites correspondientes.</p>
-    <div class="seccion">SEXTA: NORMATIVA APLICABLE</div>
-    <p>Se regirá por lo dispuesto en:
+    <p><strong>SEXTA: NORMATIVA APLICABLE</strong></p>
+    <div class="lista-compacta">
+        <div class="item-lista">Se regirá por lo dispuesto en:</div>
+        <div class="item-lista">- Ley Orgánica de Economía Popular y Solidaria: artículos 29 y 49</div>
+        <div class="item-lista">- Resolución Nro. 675-2021-F, de 19 de agosto de 2021: artículos 5, 6, 7 y 14</div>
+    </div>
     <p>
-    <p>- Ley Orgánica de Economía Popular y Solidaria: artículos 29 y 49
-    <p>
-    <p>- Resolución Nro. 675-2021-F, de 19 de agosto de 2021: artículos 5, 6, 7 y 14
-    <p>
-    <div class="seccion">SÉPTIMA: TERMINACIÓN DEL CONTRATO</div>
-    <p>El contrato podrá finalizar:
-    <p>
-    <p>1. A voluntad del ASOCIADO/A
-    <p>
-    <p>2. Por decisión del Consejo de Administración
-    <p>
-    <p>3. Por orden judicial o de autoridad competente
-    <p>
-    <p>4. Por disposición de órganos de regulación financiera
-    <p>
-
+    <p><strong>SÉPTIMA: TERMINACIÓN DEL CONTRATO</strong></p>
+    <div class="lista-compacta">
+        <div class="item-lista">El contrato podrá finalizar:</div>
+        <div class="item-lista">1. A voluntad del ASOCIADO/A</div>
+        <div class="item-lista">2. Por decisión del Consejo de Administración</div>
+        <div class="item-lista">3. Por orden judicial o de autoridad competente</div>
+        <div class="item-lista">4. Por disposición de órganos de regulación financiera</div>
+    </div>
     <p>LA ENTIDAD podrá dar por terminado este acuerdo, previa notificación escrita con al menos 30 días de antelación.
     </p>
     <div class="seccion">OCTAVA: DEVOLUCION Y CIERRE DE CUENTA</div>
@@ -179,27 +197,61 @@
 
 
 
-    <p style="margin-top: 40px;">Firmado en Quito, a los {{ fecha_actual }}.</p>
+    <style>
+        /* Estilos de firma */
+        .bloque-firma {
+            display: inline-block;
+            text-align: center;
+            vertical-align: top;
+            width: auto;
+        }
 
-    <table class="tabla-firmas">
+        .img-linea-firma {
+            width: auto;
+            /* Tamaño natural de la imagen */
+            height: auto;
+            display: block;
+            margin: 0 auto 1px auto;
+            /* 1px de separación con el nombre (mínimo) */
+        }
+
+        .datos-firma {
+            font-size: 10pt;
+            font-weight: bold;
+            line-height: 1.1;
+            margin-top: 0;
+            padding-top: 0;
+        }
+
+        .espacio-firma-fisica {
+            height: 3.25cm;
+            /* Altura cómoda para firmar */
+        }
+    </style>
+
+    <p>Firmado en Quito, a los {{ fecha_actual }}.</p>
+
+    <table style="width: 100%; border-collapse: collapse; margin-top: 60px;">
         <tr>
-            <td class="col-firma">
-                <div style="height: 100px;"></div>
-                <div class="linea-firma">
-                    <strong>Erik Rafael Alomoto Alquinga</strong><br>
-                    RUC: 1793225790001
+            <td style="width: 50%; text-align: center; vertical-align: bottom;">
+                <div class="bloque-firma">
+                    <div class="espacio-firma-fisica">&nbsp;</div>
+                    <img src="linea_firma.png" class="img-linea-firma" alt="Firma">
+                    <div class="datos-firma">
+                        Erik Rafael Alomoto Alquinga<br>
+                        RUC: 1793225790001
+                    </div>
                 </div>
             </td>
 
-            <td class="col-firma">
-                <div class="huella-box"></div>
-                <div class="huella-texto">HUELLA DIGITAL</div>
-
-                <div style="height: 20px;"></div>
-
-                <div class="linea-firma">
-                    <strong>{{ nombres_completos }}</strong><br>
-                    C.I.: {{ cedula }}
+            <td style="width: 50%; text-align: center; vertical-align: bottom;">
+                <div class="bloque-firma">
+                    <div class="espacio-firma-fisica">&nbsp;</div>
+                    <img src="linea_firma.png" class="img-linea-firma" alt="Firma">
+                    <div class="datos-firma">
+                        {{ nombres_completos }}<br>
+                        C.I.: {{ cedula }}
+                    </div>
                 </div>
             </td>
         </tr>

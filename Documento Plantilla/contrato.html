@@ -198,7 +198,7 @@
 
 
     <style>
-        /* Estilos de firma compactos */
+        /* Estilos de firma */
         .bloque-firma {
             display: inline-block;
             text-align: center;
@@ -211,23 +211,29 @@
             height: auto;
             display: block;
             margin: 0 auto 0 auto;
-            /* Margen CERO absoluto en la imagen */
         }
 
         .datos-firma {
             font-size: 10pt;
             font-weight: bold;
             line-height: 1.0;
-            /* Interlineado muy compacto */
-
-            /* EL TRUCO: Margen negativo para subir el texto y reducir el espacio un 50% */
             margin-top: -5px;
+            /* Margen negativo para pegar el texto a la línea */
             padding-top: 0;
         }
 
         .espacio-firma-fisica {
             height: 3.25cm;
-            /* Espacio cómodo para firmar */
+        }
+
+        /* NUEVO ESTILO: Huella reducida un 30% (1.8cm) y centrada */
+        .img-huella-contrato {
+            width: 1.8cm;
+            /* Reducido de 2.5cm a 1.8cm */
+            height: auto;
+            display: block;
+            margin: 15px auto 0 auto;
+            /* Centrado y con espacio arriba */
         }
     </style>
 
@@ -254,6 +260,8 @@
                         {{ nombres_completos }}<br>
                         C.I.: {{ cedula }}
                     </div>
+
+                    <img src="huella_placeholder.png" class="img-huella-contrato" alt="Huella Digital">
                 </div>
             </td>
         </tr>

@@ -584,7 +584,7 @@ def consultar_clientes():
         return cursor.fetchall()
     finally: db_manager.release_connection(conn)
 
-def sincronizar_cliente_desde_caja(cedula, ruc, nombre, email, direccion, telefono, asesor, apertura):
+def sincronizar_cliente_desde_caja(cedula, ruc, nombre, email, direccion, telefono, asesor, fecha_apertura, num_carpeta):
     """Sincroniza datos básicos desde Caja a Clientes (Insert o Update)."""
     if not cedula: return
     conn, cursor = conectar_db()
@@ -594,14 +594,14 @@ def sincronizar_cliente_desde_caja(cedula, ruc, nombre, email, direccion, telefo
         if exists:
             cursor.execute("""
                 UPDATE Clientes SET 
-                ruc=%s, nombre=%s, email=%s, direccion=%s, telefono=%s, asesor=%s, apertura=%s
+                ruc=%s, nombre=%s, email=%s, direccion=%s, telefono=%s, asesor=%s, apertura=%s, numero_carpeta=%s
                 WHERE id = %s
-            """, (ruc, nombre, email, direccion, telefono, asesor, apertura, exists[0]))
+            """, (ruc, nombre, email, direccion, telefono, asesor, fecha_apertura, num_carpeta, exists[0]))
         else:
             cursor.execute("""
-                INSERT INTO Clientes (cedula, ruc, nombre, email, direccion, telefono, asesor, apertura) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (cedula, ruc, nombre, email, direccion, telefono, asesor, apertura))
+                INSERT INTO Clientes (cedula, ruc, nombre, email, direccion, telefono, asesor, apertura, numero_carpeta) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (cedula, ruc, nombre, email, direccion, telefono, asesor, fecha_apertura, num_carpeta))
         conn.commit()
     except Exception as e:
         print(f"Error sincronizando cliente desde caja: {e}")
@@ -3412,8 +3412,8 @@ def abrir_modulo_caja():
 
         conn, cursor = conectar_db()
         try:
-            # Sincronizar con tabla Clientes antes de guardar en Caja
-            sincronizar_cliente_desde_caja(ced, ruc, var_nombres.get().strip(), var_email.get().strip(), var_direccion.get().strip(), var_telefono.get().strip(), var_asesor.get().strip(), var_num_apertura.get())
+            # Sincronizar con tabla Clientes antes de guardar en Caja (Incluye Fecha y N. Carpeta)
+            sincronizar_cliente_desde_caja(ced, ruc, var_nombres.get().strip(), var_email.get().strip(), var_direccion.get().strip(), var_telefono.get().strip(), var_asesor.get().strip(), var_fecha_hora.get(), var_num_apertura.get())
             
             cursor.execute("SELECT id FROM Caja WHERE cedula = %s OR (cedula = '' AND ruc = %s)", (ced, ruc))
             exists = cursor.fetchone()
@@ -3532,8 +3532,8 @@ def abrir_modulo_caja():
         
         conn, cursor = conectar_db()
         try:
-            # Sincronizar en modo silencioso también
-            sincronizar_cliente_desde_caja(ced, ruc, var_nombres.get().strip(), var_email.get().strip(), var_direccion.get().strip(), var_telefono.get().strip(), var_asesor.get().strip(), var_num_apertura.get())
+            # Sincronizar en modo silencioso también (Incluye Fecha y N. Carpeta)
+            sincronizar_cliente_desde_caja(ced, ruc, var_nombres.get().strip(), var_email.get().strip(), var_direccion.get().strip(), var_telefono.get().strip(), var_asesor.get().strip(), var_fecha_hora.get(), var_num_apertura.get())
             
             cursor.execute("SELECT id FROM Caja WHERE cedula = %s OR (cedula = '' AND ruc = %s)", (ced, ruc))
             exists = cursor.fetchone()

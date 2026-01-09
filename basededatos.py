@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
+import pandas as pd
 import sqlite3 
 import hashlib 
 import datetime
@@ -474,6 +475,10 @@ def migrar_db():
                 print("Migrando DB: Agregando columna 'estado_impreso' a Caja...")
                 cursor.execute("ALTER TABLE Caja ADD COLUMN estado_impreso TEXT DEFAULT 'Pendiente'")
                 conn.commit()
+            if 'observaciones' not in cols_caja:
+                print("Migrando DB: Agregando columna 'observaciones' a Caja...")
+                cursor.execute("ALTER TABLE Caja ADD COLUMN observaciones TEXT")
+                conn.commit()
             
         # Migración Usuario Admin -> Paul
         cursor.execute("SELECT id FROM Usuarios WHERE usuario='admin'")
@@ -758,8 +763,30 @@ def obtener_campos_ui():
         e_egresos.get().strip()
     )
 
+def toggle_inputs_clientes(state):
+    """Habilita o deshabilita todos los campos de entrada del módulo de clientes."""
+    # Lista de todos los widgets de entrada (Entry, ComboBox, Text, CheckBox)
+    # Incluimos los checkbox específicos que fueron nombrados en abrir_modulo_clientes
+    widgets = [
+        e_cedula, e_ruc, e_nombre, e_cargas, e_email, e_telf, e_dir, e_parroquia,
+        e_ref_vivienda, e_profesion, e_ingresos, e_ref1, e_ref2, e_asesor,
+        e_apertura, e_carpeta, e_nacimiento, e_val_cartera, e_val_demanda,
+        e_det_justicia, e_valor_terreno, e_valor_casa, e_valor_local,
+        e_ingresos_2, e_score_buro, e_egresos,
+        c_civil, c_vivienda, c_hipotecado, c_hip_casa, c_hip_local,
+        c_fuente_ingreso, c_fuente_ingreso_2, c_producto, t_obs,
+        cb_cartera, cb_demanda, cb_justicia, cb_terreno, cb_casa, cb_local
+    ]
+    for w in widgets:
+        try:
+            if w: w.configure(state=state)
+        except: pass
+
 def limpiar_campos_ui():
     global ID_CLIENTE_SELECCIONADO
+    # Desbloquear campos para permitir nuevo ingreso
+    toggle_inputs_clientes('normal')
+    
     elementos = [e_cedula, e_ruc, e_nombre, e_cargas, e_email, e_telf, e_dir, e_parroquia, e_ref_vivienda,
                  e_profesion, e_ingresos, e_ref1, e_ref2, e_asesor, e_apertura, e_carpeta, e_nacimiento, 
                  e_val_cartera, e_val_demanda, e_det_justicia, e_valor_terreno, e_valor_casa, e_valor_local, e_ingresos_2, e_score_buro, e_egresos]
@@ -772,12 +799,14 @@ def limpiar_campos_ui():
     toggle_legal_fields(); toggle_terreno(); toggle_casa(); toggle_local(); toggle_fuente_ingreso(); toggle_fuente_ingreso_2()
     
     # Limpiar total disponible
-    lbl_total_disponible_valor.config(text="$ 0.00")
+    lbl_total_disponible_valor.configure(text="$ 0.00")
     
     ID_CLIENTE_SELECCIONADO = None
-    btn_accion.config(text="💾 Guardar Nuevo", command=accion_guardar)
-    btn_cancelar.grid_forget()
-    if NIVEL_ACCESO == 1: btn_eliminar.grid(row=0, column=2, padx=10) 
+    btn_accion.configure(text="💾 Guardar Nuevo Cliente", command=accion_guardar, state='normal')
+    btn_cancelar.pack_forget() # Volver a ocultar si se requiere
+    # Re-asegurar visibilidad de botones si fueron ocultos
+    btn_cancelar.pack(side='left', padx=15)
+    
     e_cedula.focus()
 
 def mostrar_datos_tree():
@@ -795,7 +824,11 @@ def accion_guardar():
     exito, msg = guardar_cliente(*obtener_campos_ui())
     if exito:
         messagebox.showinfo("Éxito", msg)
-        limpiar_campos_ui(); mostrar_datos_tree()
+        # Bloquear si no es admin después de guardar
+        if NIVEL_ACCESO != 1:
+            toggle_inputs_clientes('disabled')
+            btn_accion.configure(state='disabled')
+        mostrar_datos_tree()
     else: messagebox.showerror("Error", msg)
 
 def accion_actualizar():
@@ -803,7 +836,11 @@ def accion_actualizar():
     exito, msg = actualizar_cliente(ID_CLIENTE_SELECCIONADO, *obtener_campos_ui())
     if exito:
         messagebox.showinfo("Éxito", msg)
-        limpiar_campos_ui(); mostrar_datos_tree()
+        # Bloquear si no es admin después de actualizar (aunque Std no debería llegar aquí si está bloqueado)
+        if NIVEL_ACCESO != 1:
+            toggle_inputs_clientes('disabled')
+            btn_accion.configure(state='disabled')
+        mostrar_datos_tree()
     else: messagebox.showerror("Error", msg)
 
 def accion_eliminar():
@@ -816,11 +853,32 @@ def accion_buscar():
     term = e_busqueda.get().strip()
     if not term: return mostrar_datos_tree()
     res = buscar_clientes(term)
-    for i in tree.get_children(): tree.delete(i)
     for run in res:
-        ing_fmt = "$ " + formatear_float_str(run[12])
-        sf = "Terreno: Si" if (len(run) > 29 and run[29] == 1) else ""
-        visual = (run[0], run[1], run[3], run[7], ing_fmt, sf, run[19], run[17], run[15])
+        # Usar nombres de columna para evitar errores de índice
+        try:
+            ing_val = run['ingresos_mensuales'] if 'ingresos_mensuales' in run.keys() else run[12]
+            ing_fmt = "$ " + formatear_float_str(ing_val if ing_val else 0)
+            
+            sf = "Terreno: Si" if ('terreno' in run.keys() and run['terreno'] == 1) else ""
+            # ID, Cedula, Nombre, Telf, Ingresos, Sit.Financiera, Producto, N.Apertura, Asesor
+            # Usamos acceso por nombre si es posible, fallback a índices si no (pero el cursor DictCursor debería proveer nombres)
+            visual = (
+                run['id'], 
+                run['cedula'], 
+                run['nombre'], 
+                run['telefono'], 
+                ing_fmt, 
+                sf, 
+                run['producto'], 
+                run['apertura'], 
+                run['asesor']
+            )
+        except (KeyError, TypeError, IndexError):
+            # Fallback seguro si por alguna razón no vienen nombres (poco probable con DictCursor)
+            ing_fmt = "$ " + formatear_float_str(run[12] if len(run) > 12 else 0)
+            sf = "Terreno: Si" if (len(run) > 29 and run[29] == 1) else ""
+            visual = (run[0], run[1], run[3], run[7], ing_fmt, sf, run[19], run[17], run[15])
+            
         tree.insert('', tk.END, values=visual)
 
 def cargar_seleccion(event):
@@ -866,9 +924,15 @@ def cargar_seleccion(event):
         if val['referencia2']: e_ref2.insert(0, val['referencia2'])
         if val['asesor']: e_asesor.insert(0, val['asesor'])
         
-        # MAPEO CORREGIDO PARA CARGA USANDO NOMBRES:
-        if 'fecha_registro' in val.keys() and val['fecha_registro']: e_apertura.insert(0, val['fecha_registro'])
-        if val['apertura']: e_carpeta.insert(0, val['apertura'])
+        # MAPEO CORREGIDO: F. Apertura -> fecha_registro, Carpeta -> apertura
+        # Eliminado chequeo val.keys() que puede fallar en SQLite con Row
+        try:
+            if val['fecha_registro']: e_apertura.insert(0, val['fecha_registro'])
+        except: pass
+        
+        try:
+            if val['apertura']: e_carpeta.insert(0, val['apertura'])
+        except: pass
         
         if val['fecha nacimiento']: e_nacimiento.insert(0, val['fecha nacimiento'])
         if val['producto']: c_producto.set(val['producto'])
@@ -880,44 +944,86 @@ def cargar_seleccion(event):
         var_demanda.set(val['demanda judicial'])
         if val['valor demanda']: e_val_demanda.insert(0, formatear_float_str(val['valor demanda']))
         
-        var_justicia.set(val['problemas justicia'])
+        if val['problemas justicia']: var_justicia.set(val['problemas justicia'])
         if val['detalle justicia']: e_det_justicia.insert(0, val['detalle justicia'])
         
         toggle_legal_fields()
 
-        if 'referencia_vivienda' in val.keys() and val['referencia_vivienda']: e_ref_vivienda.insert(0, val['referencia_vivienda'])
+        try:
+            if val['referencia_vivienda']: e_ref_vivienda.insert(0, val['referencia_vivienda'])
+        except: pass
         
-        if 'terreno' in val.keys(): var_terreno.set(val['terreno'] if val['terreno'] else 0)
-        if 'valor_terreno' in val.keys() and val['valor_terreno']: e_valor_terreno.insert(0, formatear_float_str(val['valor_terreno']))
-        if 'hipotecado' in val.keys() and val['hipotecado']: c_hipotecado.set(val['hipotecado'])
+        try:
+            if val['terreno']: var_terreno.set(val['terreno'])
+        except: pass
         
-        if 'casa_dep' in val.keys(): var_casa.set(val['casa_dep'] if val['casa_dep'] else 0)
-        if 'valor_casa_dep' in val.keys() and val['valor_casa_dep']: e_valor_casa.insert(0, formatear_float_str(val['valor_casa_dep']))
-        if 'hipotecado_casa_dep' in val.keys() and val['hipotecado_casa_dep']: c_hip_casa.set(val['hipotecado_casa_dep'])
+        try:
+            if val['valor_terreno']: e_valor_terreno.insert(0, formatear_float_str(val['valor_terreno']))
+        except: pass
         
-        if len(val) > 35: var_local.set(val[35] if val[35] else 0)
-        if len(val) > 36 and val[36]: e_valor_local.insert(0, formatear_float_str(val[36]))
-        if len(val) > 37 and val[37]: c_hip_local.set(val[37])
+        try:
+            if val['hipotecado']: c_hipotecado.set(val['hipotecado'])
+        except: pass
         
-        if len(val) > 39 and val[39]: e_ingresos_2.insert(0, formatear_float_str(val[39]))
-        if len(val) > 40 and val[40]: c_fuente_ingreso_2.set(val[40])
+        try:
+            if val['casa_dep']: var_casa.set(val['casa_dep'])
+        except: pass
         
-        if len(val) > 41 and val[41]: e_score_buro.insert(0, str(val[41]))
+        try:
+            if val['valor_casa_dep']: e_valor_casa.insert(0, formatear_float_str(val['valor_casa_dep']))
+        except: pass
         
-        if len(val) > 42 and val[42]: e_egresos.insert(0, formatear_float_str(val[42]))
+        try:
+            if val['hipotecado_casa_dep']: c_hip_casa.set(val['hipotecado_casa_dep'])
+        except: pass
         
-        # Actualizar total disponible
-        if len(val) > 43 and val[43]:
-            lbl_total_disponible_valor.config(text="$ " + formatear_float_str(val[43]))
-        else:
+        # Local Com: local (indice 35 aprox), valor_local (36), hipotecado_local (37)
+        try:
+            if val['local']: var_local.set(val['local'])
+            if val['valor_local']: e_valor_local.insert(0, formatear_float_str(val['valor_local']))
+            if val['hipotecado_local']: c_hip_local.set(val['hipotecado_local'])
+        except: pass
+        
+        # Ingresos 2: ingresos_mensuales_2 (39), fuente_ingreso_2 (40)
+        try:
+            if val['ingresos_mensuales_2']: e_ingresos_2.insert(0, formatear_float_str(val['ingresos_mensuales_2']))
+            if val['fuente_ingreso_2']: c_fuente_ingreso_2.set(val['fuente_ingreso_2'])
+        except: pass
+        
+        # Score Buro: score_buro (41)
+        try:
+            if val['score_buro']: e_score_buro.insert(0, str(val['score_buro']))
+        except: pass
+        
+        # Egresos: egresos (42)
+        try:
+            if val['egresos']: e_egresos.insert(0, formatear_float_str(val['egresos']))
+        except: pass
+        
+        # Actualizar total disponible (43)
+        try:
+            if val['total_disponible']:
+                lbl_total_disponible_valor.configure(text="$ " + formatear_float_str(val['total_disponible']))
+            else:
+                calcular_total_disponible()
+        except:
             calcular_total_disponible()
 
         toggle_terreno(); toggle_casa(); toggle_local(); toggle_fuente_ingreso(); toggle_fuente_ingreso_2()
 
     except Exception as e: print(f"Error carga: {e}")
 
-    btn_accion.config(text="📝 Actualizar", command=accion_actualizar)
-    btn_cancelar.grid(row=0, column=0, padx=10)
+    # --- LÓGICA DE PERMISOS Y BLOQUEO AL CARGAR ---
+    if NIVEL_ACCESO == 1:
+        # Administrador: Todo habilitado
+        toggle_inputs_clientes('normal')
+        btn_accion.configure(text="📝 Actualizar", command=accion_actualizar, state='normal')
+    else:
+        # Usuario Estándar: Solo lectura upon load
+        toggle_inputs_clientes('disabled')
+        btn_accion.configure(text="📝 Actualizar (Bloqueado)", state='disabled')
+
+    btn_cancelar.pack(side='left', padx=15)
 
 def toggle_legal_fields(*args):
     if var_cartera.get() == 1: 
@@ -1134,9 +1240,159 @@ def abrir_modulo_informes():
     tree_docs.configure(yscrollcommand=scrollbar.set)
     tree_docs.pack(fill='both', expand=True)
 
-    # SECCIÓN INFORMES (Placeholder)
-    ctk.CTkLabel(tab_reports, text="Módulo de Informes Generales", font=('Arial', 14, 'bold'), text_color="#1860C3").pack(pady=50)
-    ctk.CTkLabel(tab_reports, text="Aquí se generarán los reportes del sistema.", text_color="grey").pack()
+    # SECCIÓN INFORMES (Contenido)
+    container_reports = ctk.CTkFrame(tab_reports, fg_color="white")
+    container_reports.pack(fill='both', expand=True, padx=20, pady=20)
+
+    ctk.CTkLabel(container_reports, text="Informes del Sistema", font=('Arial', 14, 'bold'), text_color="#1860C3").pack(pady=(10, 20))
+
+    btn_reports_frame = ctk.CTkFrame(container_reports, fg_color="transparent")
+    btn_reports_frame.pack(fill='x', padx=20)
+
+    def exportar_caja_global_excel():
+        """Exporta todos los registros de la tabla Caja a Excel con formato."""
+        try:
+            conn, cursor = conectar_db()
+            cursor.execute("""
+                SELECT 
+                    fecha_hora, cedula, nombres_completos, ruc, telefono, 
+                    email, direccion, valor_apertura, numero_apertura, 
+                    buro_credito, observaciones 
+                FROM Caja
+            """)
+            rows = cursor.fetchall()
+            db_manager.release_connection(conn)
+
+            if not rows:
+                messagebox.showinfo("Información", "No hay datos registrados en Caja para exportar.")
+                return
+
+            # Definición de columnas
+            cols = [
+                "Fecha de Registro", "Cédula", "Nombres y Apellidos", "RUC", "Teléfono",
+                "Correo", "Dirección", "Valor Apertura ($)", "No. Apertura",
+                "Buró de Crédito", "Observaciones"
+            ]
+            
+            df = pd.DataFrame(rows, columns=cols)
+
+            # Diálogo para guardar
+            filename = filedialog.asksaveasfilename(
+                title="Guardar Reporte Global Caja",
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx")],
+                initialfile=f"Reporte_Global_Caja_{datetime.datetime.now().strftime('%Y%m%d')}"
+            )
+
+            if filename:
+                # Exportar con formato usando xlsxwriter
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Reporte Caja')
+                
+                # Obtener el libro y la hoja
+                workbook  = writer.book
+                worksheet = writer.sheets['Reporte Caja']
+                
+                # Formato para encabezados (Negrita)
+                header_format = workbook.add_format({
+                    'bold': True,
+                    'bg_color': '#D7E4BC',
+                    'border': 1
+                })
+                
+                # Aplicar formato a los encabezados
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    # Ajustar ancho de columna automáticamente
+                    worksheet.set_column(col_num, col_num, len(value) + 5)
+
+                writer.close()
+                messagebox.showinfo("Éxito", f"Reporte global exportado correctamente a:\n{filename}")
+                registrar_auditoria("Exportar Excel Global Caja", detalles=f"Archivo: {os.path.basename(filename)}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo generar el reporte: {e}")
+
+    def exportar_clientes_global_excel():
+        """Exporta la base completa de clientes a Excel con todos sus campos desde el módulo de informes."""
+        try:
+            conn, cursor = conectar_db()
+            cursor.execute("SELECT * FROM Clientes")
+            rows = cursor.fetchall()
+            cols_db = [desc[0] for desc in cursor.description]
+            db_manager.release_connection(conn)
+
+            if not rows:
+                messagebox.showinfo("Información", "No hay clientes registrados en la base maestra.")
+                return
+
+            df = pd.DataFrame(rows, columns=cols_db)
+
+            # Mapeo idéntico al anterior para mantener coherencia
+            mapping = {
+                'id': 'ID', 'cedula': 'Cédula', 'ruc': 'RUC', 'nombre': 'Nombres y Apellidos',
+                'estado_civil': 'Estado Civil', 'cargas_familiares': 'Cargas Familiares',
+                'email': 'Email', 'telefono': 'Teléfono', 'direccion': 'Dirección Domicilio',
+                'parroquia': 'Parroquia', 'tipo_vivienda': 'Tipo Vivienda',
+                'referencia_vivienda': 'Referencia Vivienda', 'profesion': 'Profesión/Actividad',
+                'ingresos_mensuales': 'Ingresos Principal ($)', 'ingresos_mensuales_2': 'Ingresos Secundarios ($)',
+                'egresos': 'Egresos Mensuales ($)', 'total_disponible': 'Total Disponible ($)',
+                'referencia1': 'Referencia Personal 1', 'referencia2': 'Referencia Personal 2',
+                'asesor': 'Asesor Asignado', 'apertura': 'Número de Carpeta', 
+                'numero_carpeta': 'No. Carpeta Anterior', 'fecha nacimiento': 'Fecha de Nacimiento',
+                'producto': 'Producto', 'observaciones': 'Observaciones Generales',
+                'cartera castigada': 'Cartera', 'valor cartera': 'Valor Cartera ($)',
+                'demanda judicial': 'Demanda', 'valor demanda': 'Valor Demanda ($)',
+                'problemas justicia': 'Justicia', 'detalle justicia': 'Detalle Justicia',
+                'situacion_financiera': 'Situación Financiera', 'terreno': 'Tiene Terreno',
+                'valor_terreno': 'Valor Terreno ($)', 'hipotecado': 'Terreno Hipotecado',
+                'casa_dep': 'Tiene Casa/Dep', 'valor_casa_dep': 'Valor Casa/Dep ($)',
+                'hipotecado_casa_dep': 'Casa Hipotecada', 'local': 'Tiene Local',
+                'valor_local': 'Valor Local ($)', 'hipotecado_local': 'Local Hipotecado',
+                'score_buro': 'Score Buró', 'fecha_registro': 'Fecha de Apertura'
+            }
+
+            df.rename(columns={k: v for k, v in mapping.items() if k in df.columns}, inplace=True)
+
+            bool_cols = ['Cartera', 'Demanda', 'Justicia', 'Tiene Terreno', 'Tiene Casa/Dep', 'Tiene Local']
+            for col in bool_cols:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: 'Si' if x == 1 else ('No' if x == 0 else x))
+
+            filename = filedialog.asksaveasfilename(
+                title="Guardar Base Completa de Clientes",
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx")],
+                initialfile=f"Master_Base_Clientes_{datetime.datetime.now().strftime('%Y%m%d')}"
+            )
+
+            if filename:
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Base Maestra')
+                workbook  = writer.book
+                worksheet = writer.sheets['Base Maestra']
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#C6EFCE', 'border': 1})
+                
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, max(len(str(value)), 15) + 2)
+
+                writer.close()
+                messagebox.showinfo("Éxito", f"Base maestra exportada correctamente a:\n{filename}")
+                registrar_auditoria("Exportar Excel Master Clientes", detalles=f"Archivo: {os.path.basename(filename)}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo exportar la base maestra: {e}")
+
+    # Lista de botones de reportes
+    ctk.CTkButton(btn_reports_frame, text="📊 EXCEL CAJA", command=exportar_caja_global_excel, 
+                  font=('Arial', 12, 'bold'), fg_color="#28a745", hover_color="#218838", height=40).pack(side='left', padx=10)
+    
+    ctk.CTkButton(btn_reports_frame, text="🟢 BASE CLIENTES COMPLETA", command=exportar_clientes_global_excel, 
+                  font=('Arial', 12, 'bold'), fg_color="#28a745", hover_color="#218838", height=40).pack(side='left', padx=10)
+    
+    # Espacio para futuros botones...
+    ctk.CTkLabel(container_reports, text="(Más reportes se habilitarán próximamente)", text_color="grey", font=('Arial', 10, 'italic')).pack(pady=20)
 
     # Logo (Panel Derecho)
     try:
@@ -1630,6 +1886,7 @@ def abrir_modulo_clientes():
     global app, e_cedula, e_ruc, e_nombre, c_civil, e_cargas, e_email, e_telf, e_dir, e_parroquia
     global c_vivienda, e_ref_vivienda, e_profesion, e_ingresos, e_ref1, e_ref2, e_asesor, e_apertura, e_carpeta, e_nacimiento
     global c_producto, t_obs, var_cartera, var_demanda, var_justicia, btn_accion, btn_cancelar, btn_eliminar
+    global cb_cartera, cb_demanda, cb_justicia, cb_terreno, cb_casa, cb_local
     global e_busqueda, tree, e_val_cartera, e_val_demanda, e_det_justicia, var_terreno, e_valor_terreno
     global lbl_dolar_cartera, lbl_dolar_demanda
     global c_hipotecado, f_terreno_hip
@@ -1659,6 +1916,7 @@ def abrir_modulo_clientes():
     ctk.CTkButton(nav_frame, text="Volver al Menú", command=app.destroy, 
                   fg_color=COLOR_FONDO, text_color="#d9534f", hover_color="#EEE8AA", 
                   font=('Arial', 12, 'bold')).pack(side='right', padx=20)
+
 
     # Variables de control
     var_cartera = tk.IntVar(); var_demanda = tk.IntVar(); var_justicia = tk.IntVar()
@@ -1842,7 +2100,8 @@ def abrir_modulo_clientes():
     ctk.CTkLabel(c2_2, text="PATRIMONIO / ACTIVOS", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
     f_terr = ctk.CTkFrame(c2_2, fg_color="transparent"); f_terr.pack(fill='x', pady=2)
-    ctk.CTkCheckBox(f_terr, text="Terreno ($)", variable=var_terreno, text_color="black").pack(side='left')
+    cb_terreno = ctk.CTkCheckBox(f_terr, text="Terreno ($)", variable=var_terreno, text_color="black")
+    cb_terreno.pack(side='left')
     e_valor_terreno = crear_entry(f_terr, width=100); e_valor_terreno.pack(side='left', padx=5)
     e_valor_terreno.bind('<FocusOut>', on_focus_out_moneda); e_valor_terreno.bind('<FocusIn>', on_focus_in_moneda)
     e_valor_terreno.pack_forget()
@@ -1852,7 +2111,8 @@ def abrir_modulo_clientes():
     f_terreno_hip.pack_forget()
 
     f_casa = ctk.CTkFrame(c2_2, fg_color="transparent"); f_casa.pack(fill='x', pady=2)
-    ctk.CTkCheckBox(f_casa, text="Casa/Dep ($)", variable=var_casa, text_color="black").pack(side='left')
+    cb_casa = ctk.CTkCheckBox(f_casa, text="Casa/Dep ($)", variable=var_casa, text_color="black")
+    cb_casa.pack(side='left')
     e_valor_casa = crear_entry(f_casa, width=100); e_valor_casa.pack(side='left', padx=5)
     e_valor_casa.bind('<FocusOut>', on_focus_out_moneda); e_valor_casa.bind('<FocusIn>', on_focus_in_moneda)
     e_valor_casa.pack_forget()
@@ -1862,7 +2122,8 @@ def abrir_modulo_clientes():
     f_casa_hip.pack_forget()
 
     f_loc = ctk.CTkFrame(c2_2, fg_color="transparent"); f_loc.pack(fill='x', pady=2)
-    ctk.CTkCheckBox(f_loc, text="Local Com ($)", variable=var_local, text_color="black").pack(side='left')
+    cb_local = ctk.CTkCheckBox(f_loc, text="Local Com ($)", variable=var_local, text_color="black")
+    cb_local.pack(side='left')
     e_valor_local = crear_entry(f_loc, width=100); e_valor_local.pack(side='left', padx=5)
     e_valor_local.bind('<FocusOut>', on_focus_out_moneda); e_valor_local.bind('<FocusIn>', on_focus_in_moneda)
     e_valor_local.pack_forget()
@@ -1898,7 +2159,8 @@ def abrir_modulo_clientes():
     fl_grid = ctk.CTkFrame(c3_2, fg_color="transparent", border_width=1, border_color="grey")
     fl_grid.pack(fill='both', padx=5, pady=5)
     
-    ctk.CTkCheckBox(fl_grid, text="Cartera", variable=var_cartera, text_color="black", width=20).grid(row=0, column=0, sticky='w', padx=10, pady=10)
+    cb_cartera = ctk.CTkCheckBox(fl_grid, text="Cartera", variable=var_cartera, text_color="black", width=20)
+    cb_cartera.grid(row=0, column=0, sticky='w', padx=10, pady=10)
     lbl_dolar_cartera = ctk.CTkLabel(fl_grid, text="($)", text_color="black", fg_color="transparent")
     lbl_dolar_cartera.grid(row=0, column=1)
     e_val_cartera = crear_entry(fl_grid, width=100)
@@ -1906,7 +2168,8 @@ def abrir_modulo_clientes():
     e_val_cartera.bind('<FocusOut>', on_focus_out_moneda); e_val_cartera.bind('<FocusIn>', on_focus_in_moneda)
     lbl_dolar_cartera.grid_remove(); e_val_cartera.grid_remove()
 
-    ctk.CTkCheckBox(fl_grid, text="Demanda", variable=var_demanda, text_color="black", width=20).grid(row=1, column=0, sticky='w', padx=10, pady=10)
+    cb_demanda = ctk.CTkCheckBox(fl_grid, text="Demanda", variable=var_demanda, text_color="black", width=20)
+    cb_demanda.grid(row=1, column=0, sticky='w', padx=10, pady=10)
     lbl_dolar_demanda = ctk.CTkLabel(fl_grid, text="($)", text_color="black", fg_color="transparent")
     lbl_dolar_demanda.grid(row=1, column=1)
     e_val_demanda = crear_entry(fl_grid, width=100)
@@ -1914,7 +2177,8 @@ def abrir_modulo_clientes():
     e_val_demanda.bind('<FocusOut>', on_focus_out_moneda); e_val_demanda.bind('<FocusIn>', on_focus_in_moneda)
     lbl_dolar_demanda.grid_remove(); e_val_demanda.grid_remove()
     
-    ctk.CTkCheckBox(fl_grid, text="Justicia", variable=var_justicia, text_color="black", width=20).grid(row=2, column=0, sticky='w', padx=10, pady=10)
+    cb_justicia = ctk.CTkCheckBox(fl_grid, text="Justicia", variable=var_justicia, text_color="black", width=20)
+    cb_justicia.grid(row=2, column=0, sticky='w', padx=10, pady=10)
     e_det_justicia = crear_entry(fl_grid, width=150)
     e_det_justicia.grid(row=2, column=1, columnspan=2, padx=10)
     e_det_justicia.grid_remove()
@@ -1933,6 +2197,7 @@ def abrir_modulo_clientes():
     # Permiso Administrador (1) para eliminar
     if NIVEL_ACCESO == 1: 
         btn_eliminar.pack(side='left', padx=15)
+
     
     # Restricciones para Asesores (Nivel 6)
     if NIVEL_ACCESO == 6:
@@ -3235,9 +3500,12 @@ def abrir_modulo_caja():
     var_buro_ruta = tk.StringVar()
     var_valor_apertura = tk.StringVar()
     var_num_apertura = tk.StringVar()
+    var_observaciones = tk.StringVar()
+    blocking_fecha = False # Flag para detener el reloj
 
     def actualizar_fecha():
-        var_fecha_hora.set(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        if not blocking_fecha:
+            var_fecha_hora.set(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         win.after(1000, actualizar_fecha)
 
     def seleccionar_archivo_buro():
@@ -3313,8 +3581,34 @@ def abrir_modulo_caja():
                 win.after(100, lambda: nb.set("Información"))
 
     def cargar_datos_caja(cedula):
+        nonlocal blocking_fecha
+        def toggle_inputs(state):
+            # Lista de campos a bloquear/desbloquear
+            # Nota: 'e_ced' y 'e_ruc' se manejan aparte por la búsqueda
+            widgets = [
+                e_nombres, e_asesor, cb_buro,
+                e_email_con, e_dir_con, e_tel_con, cb_civil_con, e_val_ape_con,
+                btn_guardar_caja, btn_guardar_con, btn_imprimir_con
+            ]
+            
+            fg = "white" if state == "normal" else "#F0F0F0"
+            for w in widgets:
+                try:
+                    w.configure(state=state)
+                    if hasattr(w, 'configure') and 'fg_color' in w.keys():
+                        w.configure(fg_color=fg)
+                except: pass
+
         if not cedula:
-            # Limpiar campos si no hay cliente (pero mantener fecha)
+            # Limpiar campos si no hay cliente
+            blocking_fecha = False
+            try:
+                e_fecha_info.configure(state='normal')
+                e_fecha_con.configure(state='normal')
+            except: pass
+            
+            toggle_inputs("normal")
+            
             var_cedula.set("")
             var_ruc.set("")
             var_nombres.set("")
@@ -3322,11 +3616,16 @@ def abrir_modulo_caja():
             var_direccion.set("")
             var_telefono.set("")
             var_estado_civil.set("Soltero")
+            var_asesor.set("") # Añadido limpiar asesor
             var_buro.set("No")
             var_buro_ruta.set("")
             var_valor_apertura.set("")
             var_num_apertura.set("")
+            var_observaciones.set("")
             toggle_buro_btn()
+            try:
+                btn_imprimir_con.configure(state='disabled')
+            except: pass
             return
 
         conn, cursor = conectar_db()
@@ -3349,7 +3648,15 @@ def abrir_modulo_caja():
         db_manager.release_connection(conn)
 
         if caja:
+            # Si existe en Caja, BLOQUEAR FECHA
+            blocking_fecha = True
+            try:
+                e_fecha_info.configure(state='disabled')
+                e_fecha_con.configure(state='disabled')
+            except: pass
+
             # id, fecha, ced, ruc, nom, email, dir, tel, civil, asesor, buro, ruta, valor, num
+            var_fecha_hora.set(caja[1] or "")
             var_ruc.set(caja[3] or "")
             var_nombres.set(caja[4] or "")
             var_email.set(caja[5] or "")
@@ -3361,12 +3668,30 @@ def abrir_modulo_caja():
             var_buro_ruta.set(caja[11] or "")
             var_valor_apertura.set(formatear_float_str(caja[12]) if caja[12] else "")
             var_num_apertura.set(caja[13] or "")
-            # var_estado_impreso = caja[14]
+            try:
+                if len(caja) > 15: var_observaciones.set(caja[15] or "")
+                else: var_observaciones.set("")
+            except: var_observaciones.set("")
+
+            # PERMISOS: Si no es admin y ya existe, BLOQUEAR TODO
+            if NIVEL_ACCESO != 1:
+                toggle_inputs("disabled")
+            else:
+                toggle_inputs("normal")
         else:
-            # Generar numero correlativo si es nuevo en Caja
+            # Nuevo cliente en Caja: DESBLOQUEAR TODO
+            blocking_fecha = False
+            try:
+                e_fecha_info.configure(state='normal')
+                e_fecha_con.configure(state='normal')
+            except: pass
+            toggle_inputs("normal")
             var_num_apertura.set(generar_correlativo_apertura())
         
         toggle_buro_btn()
+        try:
+            btn_imprimir_con.configure(state='disabled')
+        except: pass
 
     def generar_correlativo_apertura():
         conn, cursor = conectar_db()
@@ -3395,6 +3720,16 @@ def abrir_modulo_caja():
             messagebox.showwarning("Atención", "Ingrese la identificación del cliente (Cédula o RUC).")
             return
             
+        # PERMISO: Solo admin puede modificar registros existentes en Caja
+        conn_check, cursor_check = conectar_db()
+        cursor_check.execute("SELECT id FROM Caja WHERE cedula = %s OR (cedula = '' AND ruc = %s)", (ced, ruc))
+        exists_check = cursor_check.fetchone()
+        db_manager.release_connection(conn_check)
+
+        if exists_check and NIVEL_ACCESO != 1:
+            messagebox.showerror("Error", "No tiene permisos para modificar registros existentes.")
+            return
+
         # Validación numérica
         if ced and not ced.isdigit():
             messagebox.showwarning("Error", "La Cédula debe contener solo números.")
@@ -3417,7 +3752,8 @@ def abrir_modulo_caja():
             var_buro_ruta.get(),
             limpiar_moneda(var_valor_apertura.get()),
             var_num_apertura.get(),
-            "Pendiente" # estado_impreso por defecto
+            "Pendiente", # estado_impreso por defecto
+            var_observaciones.get().strip()
         )
 
         conn, cursor = conectar_db()
@@ -3433,14 +3769,14 @@ def abrir_modulo_caja():
                 if exists:
                     cursor.execute("""
                         UPDATE Caja SET 
-                        fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
+                        fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s, observaciones=%s
                         WHERE id = %s
-                    """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], exists[0]))
+                    """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[14], exists[0]))
                 else:
                     # Incluimos estado_impreso explícitamente en el INSERT normal
                     cursor.execute("""
-                        INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso) 
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso, observaciones) 
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, data)
             except Exception as e_sql:
                 # Si falla por la columna, intentamos guardar lo básico
@@ -3537,7 +3873,8 @@ def abrir_modulo_caja():
             var_buro_ruta.get(),
             limpiar_moneda(var_valor_apertura.get()),
             var_num_apertura.get(),
-            "Pendiente"
+            "Pendiente",
+            var_observaciones.get().strip()
         )
         
         conn, cursor = conectar_db()
@@ -3550,13 +3887,13 @@ def abrir_modulo_caja():
             if exists:
                 cursor.execute("""
                     UPDATE Caja SET 
-                    fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
+                    fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s, observaciones=%s
                     WHERE id = %s
-                """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], exists[0]))
+                """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[14], exists[0]))
             else:
                 cursor.execute("""
-                    INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso) 
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso, observaciones) 
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, data)
             conn.commit()
         except:
@@ -3703,10 +4040,71 @@ def abrir_modulo_caja():
                     os.startfile(f)
 
         except Exception as e:
-            messagebox.showerror("Error", f"Fallo crítico en motor de impresión industrial: {e}")
             registrar_auditoria("Fallo Motor Impresión", id_cliente=ident, detalles=str(e))
         finally:
             msg_wait.destroy()
+
+
+    def guardar_datos_contrato():
+        """Guarda solo los campos específicos de la pestaña Contrato."""
+        ced = var_cedula.get().strip()
+        ruc = var_ruc.get().strip()
+        ident = ced if ced else ruc
+        if not ident:
+            messagebox.showwarning("Atención", "No hay un cliente cargado para guardar.")
+            return
+
+        # Validación de campos obligatorios para Contrato
+        if not var_valor_apertura.get().strip() or not var_num_apertura.get().strip():
+            messagebox.showwarning("Atención", "Debe completar 'Valor de Apertura' y 'No. de Apertura' antes de guardar.")
+            return
+
+        if NIVEL_ACCESO != 1:
+            messagebox.showerror("Error", "No tiene permisos para modificar datos existentes.")
+            return
+
+        conn, cursor = conectar_db()
+        try:
+            # Campos específicos a actualizar: Dirección, Teléfono, Estado Civil, Valor Apertura, No. Apertura
+            # (Email también se suele actualizar aquí ya que está en la pestaña)
+            cursor.execute("""
+                UPDATE Caja SET 
+                email=%s, direccion=%s, telefono=%s, estado_civil=%s, valor_apertura=%s, numero_apertura=%s
+                WHERE cedula=%s OR (cedula='' AND ruc=%s)
+            """, (
+                var_email.get().strip(),
+                var_direccion.get().strip(),
+                var_telefono.get().strip(),
+                var_estado_civil.get(),
+                limpiar_moneda(var_valor_apertura.get()),
+                var_num_apertura.get(),
+                ced, ruc
+            ))
+            
+            # También sincronizamos a la tabla Clientes los datos actualizados
+            cursor.execute("""
+                UPDATE Clientes SET
+                email=%s, direccion=%s, telefono=%s, estado_civil=%s, apertura=%s
+                WHERE cedula=%s
+            """, (
+                var_email.get().strip(),
+                var_direccion.get().strip(),
+                var_telefono.get().strip(),
+                var_estado_civil.get(),
+                var_num_apertura.get(),
+                ced
+            ))
+            
+            conn.commit()
+            messagebox.showinfo("Éxito", "Datos del contrato actualizados correctamente.")
+            registrar_auditoria("Actualizar Datos Contrato", id_cliente=ident, detalles=f"Num Apertura: {var_num_apertura.get()}")
+            
+            # ACTIVACIÓN: Habilitar impresión tras guardado exitoso
+            btn_imprimir_con.configure(state='normal')
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo actualizar: {e}")
+        finally:
+            db_manager.release_connection(conn)
 
     def buscar_cliente_caja(event=None):
         ident = var_cedula.get().strip()
@@ -3736,7 +4134,8 @@ def abrir_modulo_caja():
     
     row = 0
     ctk.CTkLabel(grid_info, text="Fecha y Hora:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    ctk.CTkEntry(grid_info, textvariable=var_fecha_hora, width=350, state='readonly', fg_color="#F9F9F9", text_color="black").grid(row=row, column=1, padx=20, pady=10)
+    e_fecha_info = ctk.CTkEntry(grid_info, textvariable=var_fecha_hora, width=350, state='normal', fg_color="#F9F9F9", text_color="black")
+    e_fecha_info.grid(row=row, column=1, padx=20, pady=10)
     
     row += 1
     ctk.CTkLabel(grid_info, text="Cédula:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
@@ -3754,20 +4153,29 @@ def abrir_modulo_caja():
     
     row += 1
     ctk.CTkLabel(grid_info, text="Nombres Completos:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    ctk.CTkEntry(grid_info, textvariable=var_nombres, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=10)
+    e_nombres = ctk.CTkEntry(grid_info, textvariable=var_nombres, width=350, fg_color="white", text_color="black")
+    e_nombres.grid(row=row, column=1, padx=20, pady=10)
     
     row += 1
     ctk.CTkLabel(grid_info, text="Nombre del Asesor:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    ctk.CTkEntry(grid_info, textvariable=var_asesor, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=10)
+    e_asesor = ctk.CTkEntry(grid_info, textvariable=var_asesor, width=350, fg_color="white", text_color="black")
+    e_asesor.grid(row=row, column=1, padx=20, pady=10)
     
     row += 1
     ctk.CTkLabel(grid_info, text="¿Buró de Crédito?", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    ctk.CTkComboBox(grid_info, values=["Sí", "No"], variable=var_buro, command=toggle_buro_btn, width=100).grid(row=row, column=1, sticky='w', padx=20, pady=10)
+    cb_buro = ctk.CTkComboBox(grid_info, values=["Sí", "No"], variable=var_buro, command=toggle_buro_btn, width=100)
+    cb_buro.grid(row=row, column=1, sticky='w', padx=20, pady=10)
     btn_adjuntar = ctk.CTkButton(grid_info, text="📎 Adjuntar Buró (PDF/IMG)", command=seleccionar_archivo_buro, state="disabled", fg_color="grey")
     btn_adjuntar.grid(row=row, column=1, padx=(130, 0), pady=10)
     
     row += 1
-    ctk.CTkButton(container_info, text="💾 GUARDAR / MODIFICAR", command=guardar_caja, font=('Arial', 14, 'bold'), height=45, fg_color="#28a745", hover_color="#218838").pack(pady=20)
+    ctk.CTkLabel(grid_info, text="Observaciones:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
+    e_obs = ctk.CTkEntry(grid_info, textvariable=var_observaciones, width=350, fg_color="white", text_color="black")
+    e_obs.grid(row=row, column=1, padx=20, pady=10)
+    
+    row += 1
+    btn_guardar_caja = ctk.CTkButton(container_info, text="💾 GUARDAR / MODIFICAR", command=guardar_caja, font=('Arial', 14, 'bold'), height=45, fg_color="#28a745", hover_color="#218838")
+    btn_guardar_caja.pack(pady=20)
     
     # --- PESTAÑA CONTRATO ---
     nb.add("Contrato")
@@ -3781,7 +4189,8 @@ def abrir_modulo_caja():
     
     row = 0
     ctk.CTkLabel(grid_con, text="Fecha y Hora:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_fecha_hora, width=350, state='readonly', fg_color="#F9F9F9", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    e_fecha_con = ctk.CTkEntry(grid_con, textvariable=var_fecha_hora, width=350, state='normal', fg_color="#F9F9F9", text_color="black")
+    e_fecha_con.grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="Cédula:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
@@ -3797,33 +4206,46 @@ def abrir_modulo_caja():
     
     row += 1
     ctk.CTkLabel(grid_con, text="Correo Electrónico:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_email, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    e_email_con = ctk.CTkEntry(grid_con, textvariable=var_email, width=350, fg_color="white", text_color="black")
+    e_email_con.grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="Dirección Domicilio:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_direccion, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    e_dir_con = ctk.CTkEntry(grid_con, textvariable=var_direccion, width=350, fg_color="white", text_color="black")
+    e_dir_con.grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="Teléfono:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_telefono, width=350, fg_color="white", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    e_tel_con = ctk.CTkEntry(grid_con, textvariable=var_telefono, width=350, fg_color="white", text_color="black")
+    e_tel_con.grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
     ctk.CTkLabel(grid_con, text="Estado Civil:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkComboBox(grid_con, values=["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"], variable=var_estado_civil, width=200).grid(row=row, column=1, sticky='w', padx=20, pady=5)
+    cb_civil_con = ctk.CTkComboBox(grid_con, values=["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"], variable=var_estado_civil, width=200)
+    cb_civil_con.grid(row=row, column=1, sticky='w', padx=20, pady=5)
 
     row += 1
     ctk.CTkLabel(grid_con, text="Valor de Apertura ($):", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_val_ape = ctk.CTkEntry(grid_con, textvariable=var_valor_apertura, width=350, fg_color="white", text_color="black")
-    e_val_ape.grid(row=row, column=1, sticky='w', padx=20, pady=5)
-    e_val_ape.bind('<FocusOut>', on_focus_out_moneda)
-    e_val_ape.bind('<FocusIn>', on_focus_in_moneda)
+    e_val_ape_con = ctk.CTkEntry(grid_con, textvariable=var_valor_apertura, width=350, fg_color="white", text_color="black")
+    e_val_ape_con.grid(row=row, column=1, sticky='w', padx=20, pady=5)
+    e_val_ape_con.bind('<FocusOut>', on_focus_out_moneda)
+    e_val_ape_con.bind('<FocusIn>', on_focus_in_moneda)
     
     row += 1
     ctk.CTkLabel(grid_con, text="No. de Apertura:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_num_apertura, width=350, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    e_num_ape_con = ctk.CTkEntry(grid_con, textvariable=var_num_apertura, width=350, state='readonly', fg_color="#F0F0F0", text_color="black")
+    e_num_ape_con.grid(row=row, column=1, padx=20, pady=5)
     
     row += 1
-    ctk.CTkButton(container_con, text="🖨️ IMPRIMIR CONTRATO", command=imprimir_contrato, font=('Arial', 14, 'bold'), height=45, fg_color="#1860C3").pack(pady=20)
+    btn_frame_con = ctk.CTkFrame(container_con, fg_color="transparent")
+    btn_frame_con.pack(pady=20)
+
+    btn_guardar_con = ctk.CTkButton(btn_frame_con, text="💾 GUARDAR DATOS CONTRATO", command=guardar_datos_contrato, font=('Arial', 14, 'bold'), height=45, fg_color="#28a745", hover_color="#218838")
+    btn_guardar_con.pack(side='left', padx=10)
+    
+    btn_imprimir_con = ctk.CTkButton(btn_frame_con, text="🖨️ IMPRIMIR CONTRATO", command=imprimir_contrato, font=('Arial', 14, 'bold'), height=45, fg_color="#1860C3", state='disabled')
+    btn_imprimir_con.pack(side='left', padx=10)
+
 
 def abrir_modulo_cartera():
     win, frame, nb = crear_modulo_generico("Módulo de Cartera")

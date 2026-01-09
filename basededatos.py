@@ -513,7 +513,7 @@ def formatear_float_str(valor):
 
 # --- VALIDACIONES ---
 
-def validar_datos(cedula, nombre, apertura, ingresos_str, val_cart_str, val_dem_str):
+def validar_datos(cedula, nombre, apertura, nacimiento, ingresos_str, val_cart_str, val_dem_str):
     if not nombre.strip(): return "El Nombre es obligatorio."
     if cedula.strip() and (len(cedula.strip()) != 10 or not cedula.strip().isdigit()):
         return "La Cédula debe tener 10 dígitos numéricos."
@@ -527,6 +527,10 @@ def validar_datos(cedula, nombre, apertura, ingresos_str, val_cart_str, val_dem_
     if apertura.strip():
         try: datetime.datetime.strptime(apertura, "%d/%m/%Y")
         except ValueError: return "Fecha Apertura incorrecta (DD/MM/YYYY)."
+    
+    if nacimiento.strip() and nacimiento != "dd/mm/aaaa":
+        try: datetime.datetime.strptime(nacimiento, "%d/%m/%Y")
+        except ValueError: return "Fecha de Nacimiento incorrecta (DD/MM/YYYY)."
     return True
 
 # --- CRUD ---
@@ -538,7 +542,7 @@ def guardar_cliente(*args):
      casa_val, val_casa_str, hip_casa, local_val, val_local_str, hip_local,
      ing_str_2, fuente_ing_2, score_buro_str, egresos_str) = args
 
-    val = validar_datos(cedula, nombre, aper, ing_str, val_cart_str, val_dem_str)
+    val = validar_datos(cedula, nombre, aper, nac, ing_str, val_cart_str, val_dem_str)
     if val is not True: return False, val
     
     ingresos = limpiar_moneda(ing_str)
@@ -626,7 +630,7 @@ def actualizar_cliente(id_cliente, *args):
      casa_val, val_casa_str, hip_casa, local_val, val_local_str, hip_local,
      ing_str_2, fuente_ing_2, score_buro_str, egresos_str) = args
 
-    val = validar_datos(cedula, nombre, aper, ing_str, val_cart_str, val_dem_str)
+    val = validar_datos(cedula, nombre, aper, nac, ing_str, val_cart_str, val_dem_str)
     if val is not True: return False, val
     
     ingresos = limpiar_moneda(ing_str)
@@ -744,6 +748,17 @@ def saltar_campo(event):
     event.widget.tk_focusNext().focus()
     return "break"
 
+def on_focus_in_nacimiento(event):
+    if event.widget.get() == "dd/mm/aaaa":
+        event.widget.delete(0, tk.END)
+        event.widget.configure(text_color="black")
+
+def on_focus_out_nacimiento(event):
+    if not event.widget.get().strip():
+        event.widget.delete(0, tk.END)
+        event.widget.insert(0, "dd/mm/aaaa")
+        event.widget.configure(text_color="#a9a9a9")
+
 def obtener_campos_ui():
     return (
         e_cedula.get().strip(), e_ruc.get().strip(), e_nombre.get().strip(),
@@ -752,7 +767,7 @@ def obtener_campos_ui():
         e_profesion.get().strip(), e_ingresos.get().strip(), c_fuente_ingreso.get(), var_terreno.get(), e_valor_terreno.get().strip(), c_hipotecado.get(),
         e_ref1.get().strip(), e_ref2.get().strip(), e_asesor.get().strip(),
         e_apertura.get().strip(), e_carpeta.get().strip(), e_nacimiento.get().strip(), 
-        "", t_obs.get("1.0", tk.END).strip(), 
+        c_producto.get(), t_obs.get("1.0", tk.END).strip(), 
         var_cartera.get(), e_val_cartera.get().strip(),
         var_demanda.get(), e_val_demanda.get().strip(),
         var_justicia.get(), e_det_justicia.get().strip(),
@@ -791,10 +806,13 @@ def limpiar_campos_ui():
                  e_profesion, e_ingresos, e_ref1, e_ref2, e_asesor, e_apertura, e_carpeta, e_nacimiento, 
                  e_val_cartera, e_val_demanda, e_det_justicia, e_valor_terreno, e_valor_casa, e_valor_local, e_ingresos_2, e_score_buro, e_egresos]
     for e in elementos: e.delete(0, tk.END)
+    # Placeholder para Nacimiento
+    e_nacimiento.insert(0, "dd/mm/aaaa")
+    e_nacimiento.configure(text_color="#a9a9a9")
     
     t_obs.delete("1.0", tk.END)
     c_civil.set(''); c_vivienda.set(''); c_hipotecado.set(''); c_hip_casa.set(''); c_hip_local.set('')
-    c_fuente_ingreso.set(''); c_fuente_ingreso_2.set('')
+    c_fuente_ingreso.set(''); c_fuente_ingreso_2.set(''); c_producto.set('')
     var_cartera.set(0); var_demanda.set(0); var_justicia.set(0); var_terreno.set(0); var_casa.set(0); var_local.set(0)
     toggle_legal_fields(); toggle_terreno(); toggle_casa(); toggle_local(); toggle_fuente_ingreso(); toggle_fuente_ingreso_2()
     
@@ -934,7 +952,15 @@ def cargar_seleccion(event):
             if val['apertura']: e_carpeta.insert(0, val['apertura'])
         except: pass
         
-        if val['fecha nacimiento']: e_nacimiento.insert(0, val['fecha nacimiento'])
+        if 'fecha nacimiento' in val.keys() and val['fecha nacimiento']: 
+            e_nacimiento.delete(0, tk.END)
+            e_nacimiento.insert(0, val['fecha nacimiento'])
+            e_nacimiento.configure(text_color="black")
+        else:
+            e_nacimiento.delete(0, tk.END)
+            e_nacimiento.insert(0, "dd/mm/aaaa")
+            e_nacimiento.configure(text_color="#a9a9a9")
+
         if val['producto']: c_producto.set(val['producto'])
         if val['observaciones']: t_obs.insert("1.0", val['observaciones'])
         
@@ -1987,8 +2013,11 @@ def abrir_modulo_clientes():
     e_nombre = crear_entry(c1_1); e_nombre.pack(fill='x')
     e_nombre.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c1_1, text="F. Nacim:", text_color="black", fg_color="transparent").pack(anchor='w')
+    ctk.CTkLabel(c1_1, text="F. Nacimiento:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_nacimiento = crear_entry(c1_1); e_nacimiento.pack(fill='x')
+    e_nacimiento.insert(0, "dd/mm/aaaa"); e_nacimiento.configure(text_color="#a9a9a9")
+    e_nacimiento.bind('<FocusIn>', on_focus_in_nacimiento)
+    e_nacimiento.bind('<FocusOut>', on_focus_out_nacimiento)
     e_nacimiento.bind('<Return>', saltar_campo)
     
     ctk.CTkLabel(c1_1, text="Estado Civil:", text_color="black", fg_color="transparent").pack(anchor='w')
@@ -1998,6 +2027,10 @@ def abrir_modulo_clientes():
     ctk.CTkLabel(c1_1, text="Cargas Familiares:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_cargas = crear_entry(c1_1); e_cargas.pack(fill='x')
     e_cargas.bind('<Return>', saltar_campo)
+
+    ctk.CTkLabel(c1_1, text="Producto:", text_color="black", fg_color="transparent").pack(anchor='w')
+    c_producto = ctk.CTkComboBox(c1_1, values=["Microcrédito", "Intermediación", "Rehabilitación", "Consultas", "Otros"], fg_color="white", text_color="black", border_color="grey", button_color="#1860C3")
+    c_producto.pack(fill='x')
 
     c1_2 = ctk.CTkFrame(f1, fg_color="transparent")
     c1_2.grid(row=0, column=1, padx=20, pady=10, sticky='n')

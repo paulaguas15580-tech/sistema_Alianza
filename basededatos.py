@@ -354,6 +354,13 @@ def migrar_db():
                 )
             """)
             conn.commit()
+            
+        # Tabla Caja - MIGRACIÓN FECHA CONTRATO
+        cols_caja = get_column_names(cursor, 'Caja')
+        if 'fecha_contrato' not in cols_caja:
+            print("Migrando DB: Agregando columna 'fecha_contrato' a Caja...")
+            cursor.execute("ALTER TABLE Caja ADD COLUMN fecha_contrato TEXT")
+            conn.commit()
         
         # Verificar si existe la tabla Documentos
         if not check_table_exists(cursor, 'Documentos'):
@@ -3585,6 +3592,7 @@ def abrir_modulo_consultas():
 def abrir_modulo_caja():
     # Variables de UI
     var_fecha_hora = tk.StringVar()
+    var_fecha_contrato = tk.StringVar()
     var_cedula = tk.StringVar()
     var_ruc = tk.StringVar()
     var_nombres = tk.StringVar()
@@ -3777,8 +3785,10 @@ def abrir_modulo_caja():
                 e_fecha_con.configure(state='disabled')
             except: pass
 
-            # id, fecha, ced, ruc, nom, email, dir, tel, civil, asesor, buro, ruta, valor, num
+            # id, fecha, ced, ruc, nom, email, dir, tel, civil, asesor, buro, ruta, valor, num, estado_imp, obs, FECHA_CONTRATO(16)
             var_fecha_hora.set(caja[1] or "")
+            try: var_fecha_contrato.set(caja[16] or "")
+            except: var_fecha_contrato.set("")
             var_ruc.set(caja[3] or "")
             var_nombres.set(caja[4] or "")
             var_email.set(caja[5] or "")
@@ -4241,6 +4251,11 @@ def abrir_modulo_caja():
                 var_num_apertura.get(),
                 ced
             ))
+
+            # ACTUALIZACIÓN FECHA CONTRATO: Tiempo real
+            now_contrato = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("UPDATE Caja SET fecha_contrato=%s WHERE cedula=%s OR (cedula='' AND ruc=%s)", (now_contrato, ced, ruc))
+            var_fecha_contrato.set(now_contrato)
             
             conn.commit()
             messagebox.showinfo("Éxito", "Datos del contrato actualizados correctamente.")
@@ -4335,8 +4350,8 @@ def abrir_modulo_caja():
     grid_con.pack(padx=20, pady=10)
     
     row = 0
-    ctk.CTkLabel(grid_con, text="Fecha y Hora:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_fecha_con = ctk.CTkEntry(grid_con, textvariable=var_fecha_hora, width=350, state='normal', fg_color="#F9F9F9", text_color="black")
+    ctk.CTkLabel(grid_con, text="Fecha Contrato:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
+    e_fecha_con = ctk.CTkEntry(grid_con, textvariable=var_fecha_contrato, width=350, state='normal', fg_color="#F9F9F9", text_color="black")
     e_fecha_con.grid(row=row, column=1, padx=20, pady=5)
     
     row += 1

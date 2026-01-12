@@ -3356,7 +3356,7 @@ def abrir_modulo_usuarios():
                  e_pass.delete(0, tk.END)
                  e_user.configure(border_color="grey")
                  e_pass.configure(border_color="grey")
-                 ref_u()
+                 cargar_usuarios()
              else: messagebox.showerror("Error", "No se pudo crear el usuario (posiblemente ya existe).")
         else: messagebox.showwarning("Atención", "Complete todos los campos. La clave debe tener al menos 4 caracteres.")
 
@@ -3738,6 +3738,41 @@ def abrir_modulo_caja():
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo guardar el archivo: {e}", parent=win)
 
+    def preparar_nuevo_cliente():
+        # Desbloquear todo para insertar
+        e_fecha_info.configure(state='normal')
+        e_fecha_con.configure(state='normal')
+        
+        # Lista de campos a desbloquear
+        widgets = [
+            e_nombres, e_asesor, cb_buro,
+            e_email_con, e_dir_con, e_tel_con, cb_civil_con, e_val_ape_con,
+            btn_guardar_caja, btn_guardar_con
+        ]
+        
+        for w in widgets:
+            try:
+                w.configure(state='normal')
+                if hasattr(w, 'configure') and 'fg_color' in w.keys():
+                    w.configure(fg_color="white")
+            except: pass
+            
+        e_nombres.focus()
+        btn_crear_nuevo.grid_remove() # Ocultar botón
+        
+        # Limpiar campos explícitamente y set defaults
+        var_nombres.set("")
+        var_email.set("")
+        var_direccion.set("")
+        var_telefono.set("")
+        var_estado_civil.set("Soltero")
+        var_asesor.set("")
+        var_buro.set("No")
+        var_buro_ruta.set("")
+        var_valor_apertura.set("")
+        var_num_apertura.set(generar_correlativo_apertura())
+        toggle_buro_btn()
+
     def toggle_id_fields(*args):
         ced = var_cedula.get().strip()
         ruc = var_ruc.get().strip()
@@ -3814,15 +3849,15 @@ def abrir_modulo_caja():
                 except: pass
 
         if not cedula:
-            # Limpiar campos si no hay cliente
-            blocking_fecha = False
+            # Limpiar campos si no hay input, pero NO mostrar botón nuevo aun
+            # Solo limpiar y bloquear
             try:
                 e_fecha_info.configure(state='normal')
                 e_fecha_con.configure(state='normal')
             except: pass
             
-            toggle_inputs("normal")
-            
+            toggle_inputs("disabled") # Bloquear hasta que busque algo válido
+             
             var_cedula.set("")
             var_ruc.set("")
             var_nombres.set("")
@@ -3830,13 +3865,16 @@ def abrir_modulo_caja():
             var_direccion.set("")
             var_telefono.set("")
             var_estado_civil.set("Soltero")
-            var_asesor.set("") # Añadido limpiar asesor
+            var_asesor.set("")
             var_buro.set("No")
             var_buro_ruta.set("")
             var_valor_apertura.set("")
             var_num_apertura.set("")
             var_observaciones.set("")
             toggle_buro_btn()
+            try: btn_crear_nuevo.grid_remove()
+            except: pass
+            
             try:
                 btn_imprimir_con.configure(state='disabled')
             except: pass
@@ -3846,67 +3884,98 @@ def abrir_modulo_caja():
         # 1. Intentar cargar desde Clientes para completar datos básicos
         cursor.execute("SELECT nombre, ruc, email, direccion, telefono, estado_civil FROM Clientes WHERE cedula = %s", (cedula,))
         cli = cursor.fetchone()
-        if cli:
-            var_nombres.set(cli[0] or "")
-            var_ruc.set(cli[1] or "")
-            var_cedula.set(cedula)
-            var_email.set(cli[2] or "")
-            var_direccion.set(cli[3] or "")
-            var_telefono.set(cli[4] or "")
-            if cli[5] in ["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"]:
-                var_estado_civil.set(cli[5])
         
         # 2. Intentar cargar desde Caja (sobrescribe lo anterior si hay datos específicos de Caja)
         cursor.execute("SELECT * FROM Caja WHERE cedula = %s", (cedula,))
         caja = cursor.fetchone()
         db_manager.release_connection(conn)
 
-        if caja:
-            # Si existe en Caja, BLOQUEAR FECHA
-            blocking_fecha = True
-            try:
-                e_fecha_info.configure(state='disabled')
-                e_fecha_con.configure(state='disabled')
+        if cli or caja:
+            # CLIENTE EXISTENTE (en Clientes o Caja)
+            try: btn_crear_nuevo.grid_remove()
             except: pass
+            
+            # Cargar datos de Cliente primero
+            if cli:
+                var_nombres.set(cli[0] or "")
+                var_ruc.set(cli[1] or "")
+                var_cedula.set(cedula)
+                var_email.set(cli[2] or "")
+                var_direccion.set(cli[3] or "")
+                var_telefono.set(cli[4] or "")
+                if cli[5] in ["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"]:
+                    var_estado_civil.set(cli[5])
+            
+            if caja:
+                # Si existe en Caja, BLOQUEAR FECHA y cargar full datos
+                blocking_fecha = True
+                try:
+                    e_fecha_info.configure(state='disabled')
+                    e_fecha_con.configure(state='disabled')
+                except: pass
 
-            # id, fecha, ced, ruc, nom, email, dir, tel, civil, asesor, buro, ruta, valor, num, estado_imp, obs, FECHA_CONTRATO(16)
-            var_fecha_hora.set(caja[1] or "")
-            try: var_fecha_contrato.set(caja[16] or "")
-            except: var_fecha_contrato.set("")
-            var_ruc.set(caja[3] or "")
-            var_nombres.set(caja[4] or "")
-            var_email.set(caja[5] or "")
-            var_direccion.set(caja[6] or "")
-            var_telefono.set(caja[7] or "")
-            var_estado_civil.set(caja[8] or "Soltero")
-            var_asesor.set(caja[9] or "")
-            var_buro.set(caja[10] or "No")
-            var_buro_ruta.set(caja[11] or "")
-            var_valor_apertura.set(formatear_float_str(caja[12]) if caja[12] else "")
-            var_num_apertura.set(caja[13] or "")
-            try:
-                if len(caja) > 15: var_observaciones.set(caja[15] or "")
-                else: var_observaciones.set("")
-            except: var_observaciones.set("")
+                var_fecha_hora.set(caja[1] or "")
+                try: var_fecha_contrato.set(caja[16] or "")
+                except: var_fecha_contrato.set("")
+                var_ruc.set(caja[3] or "")
+                var_nombres.set(caja[4] or "")
+                var_email.set(caja[5] or "")
+                var_direccion.set(caja[6] or "")
+                var_telefono.set(caja[7] or "")
+                var_estado_civil.set(caja[8] or "Soltero")
+                var_asesor.set(caja[9] or "")
+                var_buro.set(caja[10] or "No")
+                var_buro_ruta.set(caja[11] or "")
+                var_valor_apertura.set(formatear_float_str(caja[12]) if caja[12] else "")
+                var_num_apertura.set(caja[13] or "")
+                try:
+                    if len(caja) > 15: var_observaciones.set(caja[15] or "")
+                    else: var_observaciones.set("")
+                except: var_observaciones.set("")
 
-            # PERMISOS: Si no es admin y ya existe, BLOQUEAR TODO
-            if NIVEL_ACCESO != 1:
-                toggle_inputs("disabled")
+                # PERMISOS: Si no es admin y ya existe, BLOQUEAR TODO
+                if NIVEL_ACCESO != 1:
+                    toggle_inputs("disabled")
+                else:
+                    toggle_inputs("normal")
             else:
+                # Existe en Clientes pero NO en Caja -> Es Nuevo para Caja -> Habilitar todo
+                blocking_fecha = False
+                var_num_apertura.set(generar_correlativo_apertura())
                 toggle_inputs("normal")
+
         else:
-            # Nuevo cliente en Caja: DESBLOQUEAR TODO
-            blocking_fecha = False
-            try:
-                e_fecha_info.configure(state='normal')
-                e_fecha_con.configure(state='normal')
+            # NO EXISTE (Ni en clientes ni en caja) -> MODO CREAR
+            # 1. Limpiar campos
+            var_nombres.set("")
+            var_email.set("")
+            var_direccion.set("")
+            var_telefono.set("")
+            var_estado_civil.set("Soltero")
+            var_asesor.set("")
+            var_buro.set("No")
+            var_buro_ruta.set("")
+            var_valor_apertura.set("")
+            var_num_apertura.set("")
+            var_observaciones.set("")
+            
+            # 2. Bloquear inputs para evitar escritura accidental
+            toggle_inputs("disabled")
+            
+            # 3. Mostrar Botón "CREAR NUEVO"
+            try: btn_crear_nuevo.grid()
             except: pass
-            toggle_inputs("normal")
-            var_num_apertura.set(generar_correlativo_apertura())
-        
+            
+            messagebox.showinfo("Nuevo", "Cédula no encontrada.\nPresione '🆕 CREAR NUEVO CLIENTE' para registrar.", parent=win)
+
         toggle_buro_btn()
         try:
-            btn_imprimir_con.configure(state='disabled')
+            if cli or caja:
+                # Solo habilitar imprimir si ya está guardado (existe en caja con num apertura)
+                if caja and var_num_apertura.get(): btn_imprimir_con.configure(state='normal')
+                else: btn_imprimir_con.configure(state='disabled')
+            else:
+                btn_imprimir_con.configure(state='disabled')
         except: pass
 
     def generar_correlativo_apertura():
@@ -4394,9 +4463,21 @@ def abrir_modulo_caja():
     e_ruc = ctk.CTkEntry(grid_info, textvariable=var_ruc, width=350, fg_color="white", text_color="black")
     e_ruc.grid(row=row, column=1, padx=20, pady=10)
     
+    # Botón Flotante (o en grid) de "Crear Nuevo"
+    # Lo ubicamos en la misma columna 1, en una fila intermedia o superpuesto
+    # Mejor en el grid, en la siguiente fila del RUC
+    
+    btn_crear_nuevo = ctk.CTkButton(grid_info, text="🆕 CREAR NUEVO CLIENTE", command=preparar_nuevo_cliente, 
+                                    fg_color="#00C853", hover_color="#009624", font=("Arial", 12, "bold"))
+    # Inicialmente oculto. Se muestra si no se encuentra.
+    # Lo ubicamos en (row+1, 1) pero sin incrementar row global para no descuadrar si está oculto
+    btn_crear_nuevo.grid(row=row+1, column=1, pady=5)
+    btn_crear_nuevo.grid_remove() 
+    
     # Inicializar estados
     toggle_id_fields()
     
+    row += 1 # Espacio para el botón aunque esté hidden consume 'index', mejor sumamos row
     row += 1
     ctk.CTkLabel(grid_info, text="Nombres Completos:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
     e_nombres = ctk.CTkEntry(grid_info, textvariable=var_nombres, width=350, fg_color="white", text_color="black")

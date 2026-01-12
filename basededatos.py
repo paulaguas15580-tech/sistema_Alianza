@@ -933,9 +933,16 @@ def accion_buscar():
         tree.insert('', tk.END, values=visual)
 
 def cargar_seleccion(event):
-    global ID_CLIENTE_SELECCIONADO
+    global ID_CLIENTE_SELECCIONADO, btn_eliminar
     sel = tree.selection()
-    if not sel: return
+    
+    if not sel:
+        # Si se deselecciona, limpiar ID y deshabilitar eliminar
+        ID_CLIENTE_SELECCIONADO = None
+        try:
+            if NIVEL_ACCESO == 1: btn_eliminar.configure(state='disabled')
+        except: pass
+        return
     
     id_sel = tree.item(sel[0], 'values')[0]
     
@@ -975,11 +982,59 @@ def cargar_seleccion(event):
         if val['referencia2']: e_ref2.insert(0, val['referencia2'])
         if val['asesor']: e_asesor.insert(0, val['asesor'])
         
-        # MAPEO CORREGIDO: F. Apertura -> fecha_registro, Carpeta -> apertura
-        # Eliminado chequeo val.keys() que puede fallar en SQLite con Row
+        # INTEGRACIÓN: Buscar fecha contrato en Caja
+        fecha_mostrar = None
+        
+        # 1. Intentar buscar en Caja (Prioridad: fecha_contrato -> fecha_hora)
         try:
-            if val['fecha_registro']: e_apertura.insert(0, val['fecha_registro'])
-        except: pass
+            cedula_buscar = val['cedula'].strip() if val['cedula'] else None
+            if cedula_buscar:
+                conn_caja, cur_caja = conectar_db()
+                # Traemos todo para verificar columnas disponibles
+                cur_caja.execute("SELECT * FROM Caja WHERE cedula = %s", (cedula_buscar,))
+                res_caja = cur_caja.fetchone()
+                db_manager.release_connection(conn_caja)
+                
+                if res_caja:
+                    # Convertir a dict para seguridad si es Row
+                    data_caja = dict(res_caja) if hasattr(res_caja, 'keys') else res_caja
+                    
+                    # Prioridad 1: Fecha Contrato
+                    if 'fecha_contrato' in data_caja and data_caja['fecha_contrato']:
+                        fecha_mostrar = data_caja['fecha_contrato']
+                    # Prioridad 2: Fecha Hora (Creación/Apertura)
+                    elif 'fecha_hora' in data_caja and data_caja['fecha_hora']:
+                        fecha_mostrar = data_caja['fecha_hora']
+        except Exception as e:
+            print(f"Error consultando Caja: {e}")
+        
+        # 2. Fallback: Fecha Registro en Clientes
+        if not fecha_mostrar:
+            fecha_mostrar = val.get('fecha_registro', '')
+            
+        if fecha_mostrar:
+            # VALIDACIÓN DE FORMATO: DD/MM/YYYY
+            try:
+                # Si viene como objeto datetime
+                if isinstance(fecha_mostrar, datetime.datetime) or isinstance(fecha_mostrar, datetime.date):
+                    fecha_str = fecha_mostrar.strftime("%d/%m/%Y")
+                else:
+                    # Si es string, intentamos parsear varios formatos
+                    fecha_limpia = str(fecha_mostrar).split('.')[0] # Quitar milisegundos si hay
+                    formato_encontrado = None
+                    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y"]:
+                        try:
+                            dt = datetime.datetime.strptime(fecha_limpia, fmt)
+                            formato_encontrado = dt.strftime("%d/%m/%Y")
+                            break
+                        except: continue
+                    
+                    fecha_str = formato_encontrado if formato_encontrado else str(fecha_mostrar)
+                
+                e_apertura.insert(0, fecha_str)
+            except Exception as e_fmt:
+                print(f"Error formateando fecha: {e_fmt}")
+                e_apertura.insert(0, str(fecha_mostrar))
         
         try:
             if val['apertura']: e_carpeta.insert(0, val['apertura'])
@@ -1042,6 +1097,15 @@ def cargar_seleccion(event):
             if val['valor_local']: e_valor_local.insert(0, formatear_float_str(val['valor_local']))
             if val['hipotecado_local']: c_hip_local.set(val['hipotecado_local'])
         except: pass
+        
+        # Habilitar botón eliminar si es admin
+        try:
+            if NIVEL_ACCESO == 1:
+                btn_eliminar.configure(state='normal')
+        except: pass
+
+    except Exception as e:
+        print(f"Error cargando selección: {e}")
         
         # Ingresos 2: ingresos_mensuales_2 (39), fuente_ingreso_2 (40)
         try:
@@ -2269,6 +2333,25 @@ def abrir_modulo_clientes():
     e_det_justicia.grid(row=2, column=1, columnspan=2, padx=10)
     e_det_justicia.grid_remove()
 
+    # wrapper para eliminar desde UI
+    def ui_eliminar_cliente():
+        if not ID_CLIENTE_SELECCIONADO:
+            messagebox.showwarning("Atención", "Seleccione un cliente para eliminar.")
+            return
+            
+        if NIVEL_ACCESO != 1:
+            messagebox.showerror("Error", "Solo el Administrador puede eliminar registros.")
+            return
+
+        if messagebox.askyesno("Confirmar Eliminación", "¿Está seguro de eliminar este cliente permanentemente?\nEsta acción no se puede deshacer."):
+            ok, msg = eliminar_cliente(ID_CLIENTE_SELECCIONADO)
+            if ok:
+                messagebox.showinfo("Éxito", msg)
+                limpiar_campos_ui()
+                mostrar_datos_tree()
+            else:
+                messagebox.showerror("Error", msg)
+
     # --- BOTONES DE ACCIÓN ---
     f_btns = ctk.CTkFrame(app, fg_color="transparent")
     f_btns.pack(pady=10)
@@ -2279,7 +2362,7 @@ def abrir_modulo_clientes():
     btn_accion = ctk.CTkButton(f_btns, text="💾 Guardar Nuevo Cliente", command=accion_guardar, fg_color=COLOR_BTN_BG, hover_color=COLOR_BTN_HOVER, width=200, height=35)
     btn_accion.pack(side='left', padx=15)
     
-    btn_eliminar = ctk.CTkButton(f_btns, text="🗑 Eliminar", command=eliminar_cliente, fg_color="#d9534f", hover_color="#c9302c", state="disabled", width=120)
+    btn_eliminar = ctk.CTkButton(f_btns, text="🗑 Eliminar", command=ui_eliminar_cliente, fg_color="#d9534f", hover_color="#c9302c", state="disabled", width=120)
     # Permiso Administrador (1) para eliminar
     if NIVEL_ACCESO == 1: 
         btn_eliminar.pack(side='left', padx=15)
@@ -2339,6 +2422,7 @@ def abrir_modulo_clientes():
     tree.heading("Asesor", text="Asesor"); tree.column("Asesor", width=80)
 
     tree.bind("<Double-1>", cargar_seleccion)
+    tree.bind("<<TreeviewSelect>>", cargar_seleccion)
     mostrar_datos_tree()
     mostrar_datos_tree()
     # app.mainloop() # Ya no es mainloop principal

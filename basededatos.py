@@ -544,7 +544,7 @@ def validar_datos(cedula, nombre, apertura, nacimiento, ingresos_str, val_cart_s
 
 def guardar_cliente(*args):
     (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
-     prof, ing_str, fuente_ing, terreno_val, val_terreno_str, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, prod, obs, 
+     prof, ing_str, fuente_ing, terreno_val, val_terreno_str, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, obs, 
      cart, val_cart_str, dem, val_dem_str, just, det_just,
      casa_val, val_casa_str, hip_casa, local_val, val_local_str, hip_local,
      ing_str_2, fuente_ing_2, score_buro_str, egresos_str) = args
@@ -580,14 +580,14 @@ def guardar_cliente(*args):
             INSERT INTO Clientes (
                 cedula, ruc, nombre, estado_civil, cargas_familiares, email, telefono, direccion, parroquia, 
                 tipo_vivienda, referencia_vivienda, profesion, ingresos_mensuales, fuente_ingreso, terreno, valor_terreno, hipotecado, referencia1, referencia2, asesor, fecha_registro, apertura, 
-                "fecha nacimiento", producto, observaciones, 
+                "fecha nacimiento", observaciones, 
                 "cartera castigada", "valor cartera", "demanda judicial", "valor demanda", "problemas justicia", "detalle justicia",
                 casa_dep, valor_casa_dep, hipotecado_casa_dep, local, valor_local, hipotecado_local,
                 ingresos_mensuales_2, fuente_ingreso_2, score_buro, egresos, total_disponible
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
-              prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, prod, obs, 
+              prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, obs, 
               cart, val_cart, dem, val_dem, just, det_just,
               casa_val, valor_casa, hip_casa, local_val, valor_local, hip_local,
               ingresos_2, fuente_ing_2, score_buro, egresos, total_disponible))
@@ -601,7 +601,7 @@ def guardar_cliente(*args):
 def consultar_clientes():
     conn, cursor = conectar_db()
     try:
-        cursor.execute("SELECT * FROM Clientes")
+        cursor.execute("SELECT * FROM Clientes ORDER BY apertura ASC")
         return cursor.fetchall()
     finally: db_manager.release_connection(conn)
 
@@ -632,7 +632,7 @@ def sincronizar_cliente_desde_caja(cedula, ruc, nombre, email, direccion, telefo
 
 def actualizar_cliente(id_cliente, *args):
     (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
-     prof, ing_str, fuente_ing, terreno_val, val_terreno_str, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, prod, obs, 
+     prof, ing_str, fuente_ing, terreno_val, val_terreno_str, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, obs, 
      cart, val_cart_str, dem, val_dem_str, just, det_just,
      casa_val, val_casa_str, hip_casa, local_val, val_local_str, hip_local,
      ing_str_2, fuente_ing_2, score_buro_str, egresos_str) = args
@@ -668,13 +668,13 @@ def actualizar_cliente(id_cliente, *args):
             UPDATE Clientes SET 
             cedula=%s, ruc=%s, nombre=%s, estado_civil=%s, cargas_familiares=%s, email=%s, telefono=%s, direccion=%s, parroquia=%s, 
             tipo_vivienda=%s, referencia_vivienda=%s, profesion=%s, ingresos_mensuales=%s, fuente_ingreso=%s, terreno=%s, valor_terreno=%s, hipotecado=%s, referencia1=%s, referencia2=%s, asesor=%s, fecha_registro=%s, apertura=%s, 
-            "fecha nacimiento"=%s, producto=%s, observaciones=%s, 
+            "fecha nacimiento"=%s, observaciones=%s, 
             "cartera castigada"=%s, "valor cartera"=%s, "demanda judicial"=%s, "valor demanda"=%s, "problemas justicia"=%s, "detalle justicia"=%s,
             casa_dep=%s, valor_casa_dep=%s, hipotecado_casa_dep=%s, local=%s, valor_local=%s, hipotecado_local=%s,
             ingresos_mensuales_2=%s, fuente_ingreso_2=%s, score_buro=%s, egresos=%s, total_disponible=%s
             WHERE id = %s
         """, (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
-              prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, prod, obs, 
+              prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, obs, 
               cart, val_cart, dem, val_dem, just, det_just,
               casa_val, valor_casa, hip_casa, local_val, valor_local, hip_local,
               ingresos_2, fuente_ing_2, score_buro, egresos, total_disponible, id_cliente))
@@ -701,7 +701,7 @@ def eliminar_cliente(id_cliente):
 def buscar_clientes(termino):
     conn, cursor = conectar_db()
     t = '%' + termino + '%'
-    cursor.execute("SELECT * FROM Clientes WHERE nombre LIKE %s OR cedula LIKE %s OR ruc LIKE %s OR numero_carpeta LIKE %s", (t,t,t,t))
+    cursor.execute("SELECT * FROM Clientes WHERE nombre LIKE %s OR cedula LIKE %s OR ruc LIKE %s OR numero_carpeta LIKE %s ORDER BY apertura ASC", (t,t,t,t))
     return cursor.fetchall()
 
 # --- USUARIOS ---
@@ -774,7 +774,7 @@ def obtener_campos_ui():
         e_profesion.get().strip(), e_ingresos.get().strip(), c_fuente_ingreso.get(), var_terreno.get(), e_valor_terreno.get().strip(), c_hipotecado.get(),
         e_ref1.get().strip(), e_ref2.get().strip(), e_asesor.get().strip(),
         e_apertura.get().strip(), e_carpeta.get().strip(), e_nacimiento.get().strip(), 
-        c_producto.get(), t_obs.get("1.0", tk.END).strip(), 
+        t_obs.get("1.0", tk.END).strip(), 
         var_cartera.get(), e_val_cartera.get().strip(),
         var_demanda.get(), e_val_demanda.get().strip(),
         var_justicia.get(), e_det_justicia.get().strip(),
@@ -796,7 +796,7 @@ def toggle_inputs_clientes(state):
         e_det_justicia, e_valor_terreno, e_valor_casa, e_valor_local,
         e_ingresos_2, e_score_buro, e_egresos,
         c_civil, c_vivienda, c_hipotecado, c_hip_casa, c_hip_local,
-        c_fuente_ingreso, c_fuente_ingreso_2, c_producto, t_obs,
+        c_fuente_ingreso, c_fuente_ingreso_2, t_obs,
         cb_cartera, cb_demanda, cb_justicia, cb_terreno, cb_casa, cb_local
     ]
     for w in widgets:
@@ -819,7 +819,7 @@ def limpiar_campos_ui():
     
     t_obs.delete("1.0", tk.END)
     c_civil.set(''); c_vivienda.set(''); c_hipotecado.set(''); c_hip_casa.set(''); c_hip_local.set('')
-    c_fuente_ingreso.set(''); c_fuente_ingreso_2.set(''); c_producto.set('')
+    c_fuente_ingreso.set(''); c_fuente_ingreso_2.set('')
     var_cartera.set(0); var_demanda.set(0); var_justicia.set(0); var_terreno.set(0); var_casa.set(0); var_local.set(0)
     toggle_legal_fields(); toggle_terreno(); toggle_casa(); toggle_local(); toggle_fuente_ingreso(); toggle_fuente_ingreso_2()
     
@@ -1049,7 +1049,6 @@ def cargar_seleccion(event):
             e_nacimiento.insert(0, "dd/mm/aaaa")
             e_nacimiento.configure(text_color="#a9a9a9")
 
-        if val['producto']: c_producto.set(val['producto'])
         if val['observaciones']: t_obs.insert("1.0", val['observaciones'])
         
         var_cartera.set(val['cartera castigada'])
@@ -1371,7 +1370,7 @@ def abrir_modulo_informes():
                 'egresos': 'Egresos Mensuales ($)', 'total_disponible': 'Total Disponible ($)',
                 'referencia1': 'Referencia Personal 1', 'referencia2': 'Referencia Personal 2',
                 'asesor': 'Asesor Asignado', 'apertura': 'Número de Carpeta', 
-                'numero_carpeta': 'No. Carpeta Anterior', 'fecha nacimiento': 'Fecha de Nacimiento',
+                'fecha nacimiento': 'Fecha de Nacimiento',
                 'producto': 'Producto', 'observaciones': 'Observaciones Generales',
                 'cartera castigada': 'Cartera', 'valor cartera': 'Valor Cartera ($)',
                 'demanda judicial': 'Demanda', 'valor demanda': 'Valor Demanda ($)',
@@ -1383,6 +1382,8 @@ def abrir_modulo_informes():
                 'valor_local': 'Valor Local ($)', 'hipotecado_local': 'Local Hipotecado',
                 'score_buro': 'Score Buró', 'fecha_registro': 'Fecha de Apertura'
             }
+            if 'numero_carpeta' in df.columns:
+                df.drop(columns=['numero_carpeta'], inplace=True)
             df.rename(columns={k: v for k, v in mapping.items() if k in df.columns}, inplace=True)
 
             filename = filedialog.asksaveasfilename(title="Guardar Base Completa", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Master_Base_Clientes_{datetime.datetime.now().strftime('%Y%m%d')}", parent=win_informes)
@@ -2030,7 +2031,7 @@ def abrir_menu_principal(app_root=None):
 def abrir_modulo_clientes():
     global app, e_cedula, e_ruc, e_nombre, c_civil, e_cargas, e_email, e_telf, e_dir, e_parroquia
     global c_vivienda, e_ref_vivienda, e_profesion, e_ingresos, e_ref1, e_ref2, e_asesor, e_apertura, e_carpeta, e_nacimiento
-    global c_producto, t_obs, var_cartera, var_demanda, var_justicia, btn_accion, btn_cancelar, btn_eliminar
+    global t_obs, var_cartera, var_demanda, var_justicia, btn_accion, btn_cancelar, btn_eliminar
     global cb_cartera, cb_demanda, cb_justicia, cb_terreno, cb_casa, cb_local
     global e_busqueda, tree, e_val_cartera, e_val_demanda, e_det_justicia, var_terreno, e_valor_terreno
     global lbl_dolar_cartera, lbl_dolar_demanda
@@ -2146,10 +2147,6 @@ def abrir_modulo_clientes():
     ctk.CTkLabel(c1_1, text="Cargas Familiares:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_cargas = crear_entry(c1_1); e_cargas.pack(fill='x')
     e_cargas.bind('<Return>', saltar_campo)
-
-    ctk.CTkLabel(c1_1, text="Producto:", text_color="black", fg_color="transparent").pack(anchor='w')
-    c_producto = ctk.CTkComboBox(c1_1, values=["Microcrédito", "Intermediación", "Rehabilitación", "Consultas", "Otros"], fg_color="white", text_color="black", border_color="grey", button_color="#1860C3")
-    c_producto.pack(fill='x')
 
     c1_2 = ctk.CTkFrame(f1, fg_color="transparent")
     c1_2.grid(row=0, column=1, padx=20, pady=10, sticky='n')

@@ -1170,27 +1170,27 @@ def toggle_legal_fields(*args):
 
 def toggle_terreno(*args):
     if var_terreno.get() == 1:
-        e_valor_terreno.pack(side='left', padx=5)
-        f_terreno_hip.pack(anchor='w', padx=20)
+        e_valor_terreno.grid(row=0, column=1, padx=5)
+        f_terreno_hip.grid(row=1, column=0, columnspan=2, sticky='w', padx=25)
     else:
-        e_valor_terreno.pack_forget()
-        f_terreno_hip.pack_forget()
+        e_valor_terreno.grid_remove()
+        f_terreno_hip.grid_remove()
 
 def toggle_casa(*args):
     if var_casa.get() == 1:
-        e_valor_casa.pack(side='left', padx=5)
-        f_casa_hip.pack(anchor='w', padx=20)
+        e_valor_casa.grid(row=0, column=1, padx=5)
+        f_casa_hip.grid(row=1, column=0, columnspan=2, sticky='w', padx=25)
     else:
-        e_valor_casa.pack_forget()
-        f_casa_hip.pack_forget()
+        e_valor_casa.grid_remove()
+        f_casa_hip.grid_remove()
 
 def toggle_local(*args):
     if var_local.get() == 1:
-        e_valor_local.pack(side='left', padx=5)
-        f_local_hip.pack(anchor='w', padx=20)
+        e_valor_local.grid(row=0, column=1, padx=5)
+        f_local_hip.grid(row=1, column=0, columnspan=2, sticky='w', padx=25)
     else:
-        e_valor_local.pack_forget()
-        f_local_hip.pack_forget()
+        e_valor_local.grid_remove()
+        f_local_hip.grid_remove()
 
 def toggle_fuente_ingreso(*args):
     try:
@@ -2249,38 +2249,53 @@ def abrir_modulo_clientes():
     c2_2.grid(row=0, column=1, padx=40, pady=10, sticky='n')
     ctk.CTkLabel(c2_2, text="PATRIMONIO / ACTIVOS", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
     
-    f_terr = ctk.CTkFrame(c2_2, fg_color="transparent"); f_terr.pack(fill='x', pady=2)
-    cb_terreno = ctk.CTkCheckBox(f_terr, text="Terreno ($)", variable=var_terreno, text_color="black")
-    cb_terreno.pack(side='left')
-    e_valor_terreno = crear_entry(f_terr, width=100); e_valor_terreno.pack(side='left', padx=5)
+    # BLOQUE TERRENO
+    block_terreno = ctk.CTkFrame(c2_2, fg_color="transparent")
+    block_terreno.pack(fill='x', pady=5)
+    
+    cb_terreno = ctk.CTkCheckBox(block_terreno, text="Terreno ($)", variable=var_terreno, text_color="black")
+    cb_terreno.grid(row=0, column=0, sticky='w')
+    
+    e_valor_terreno = crear_entry(block_terreno, width=100)
+    # Grid in toggle_terreno
     e_valor_terreno.bind('<FocusOut>', on_focus_out_moneda); e_valor_terreno.bind('<FocusIn>', on_focus_in_moneda)
-    e_valor_terreno.pack_forget()
-    f_terreno_hip = ctk.CTkFrame(c2_2, fg_color="transparent"); f_terreno_hip.pack(fill='x', padx=25)
-    ctk.CTkLabel(f_terreno_hip, text="Hipotecado:", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
+    
+    f_terreno_hip = ctk.CTkFrame(block_terreno, fg_color="transparent")
+    # Grid in toggle_terreno
+    ctk.CTkLabel(f_terreno_hip, text="¿Hipotecado?", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
     c_hipotecado = ctk.CTkComboBox(f_terreno_hip, values=["Si", "No"], width=70); c_hipotecado.pack(side='left', padx=5)
-    f_terreno_hip.pack_forget()
 
-    f_casa = ctk.CTkFrame(c2_2, fg_color="transparent"); f_casa.pack(fill='x', pady=2)
-    cb_casa = ctk.CTkCheckBox(f_casa, text="Casa/Dep ($)", variable=var_casa, text_color="black")
-    cb_casa.pack(side='left')
-    e_valor_casa = crear_entry(f_casa, width=100); e_valor_casa.pack(side='left', padx=5)
+    # BLOQUE CASA
+    block_casa = ctk.CTkFrame(c2_2, fg_color="transparent")
+    block_casa.pack(fill='x', pady=5)
+
+    cb_casa = ctk.CTkCheckBox(block_casa, text="Casa/Dep ($)", variable=var_casa, text_color="black")
+    cb_casa.grid(row=0, column=0, sticky='w')
+
+    e_valor_casa = crear_entry(block_casa, width=100)
+    # Grid in toggle_casa
     e_valor_casa.bind('<FocusOut>', on_focus_out_moneda); e_valor_casa.bind('<FocusIn>', on_focus_in_moneda)
-    e_valor_casa.pack_forget()
-    f_casa_hip = ctk.CTkFrame(c2_2, fg_color="transparent"); f_casa_hip.pack(fill='x', padx=25)
-    ctk.CTkLabel(f_casa_hip, text="Hipotecado:", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
+    
+    f_casa_hip = ctk.CTkFrame(block_casa, fg_color="transparent")
+    # Grid in toggle_casa
+    ctk.CTkLabel(f_casa_hip, text="¿Hipotecado?", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
     c_hip_casa = ctk.CTkComboBox(f_casa_hip, values=["Si", "No"], width=70); c_hip_casa.pack(side='left', padx=5)
-    f_casa_hip.pack_forget()
 
-    f_loc = ctk.CTkFrame(c2_2, fg_color="transparent"); f_loc.pack(fill='x', pady=2)
-    cb_local = ctk.CTkCheckBox(f_loc, text="Local Com ($)", variable=var_local, text_color="black")
-    cb_local.pack(side='left')
-    e_valor_local = crear_entry(f_loc, width=100); e_valor_local.pack(side='left', padx=5)
+    # BLOQUE LOCAL
+    block_local = ctk.CTkFrame(c2_2, fg_color="transparent")
+    block_local.pack(fill='x', pady=5)
+
+    cb_local = ctk.CTkCheckBox(block_local, text="Local Com ($)", variable=var_local, text_color="black")
+    cb_local.grid(row=0, column=0, sticky='w')
+
+    e_valor_local = crear_entry(block_local, width=100)
+    # Grid in toggle_local
     e_valor_local.bind('<FocusOut>', on_focus_out_moneda); e_valor_local.bind('<FocusIn>', on_focus_in_moneda)
-    e_valor_local.pack_forget()
-    f_local_hip = ctk.CTkFrame(c2_2, fg_color="transparent"); f_local_hip.pack(fill='x', padx=25)
-    ctk.CTkLabel(f_local_hip, text="Hipotecado:", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
+    
+    f_local_hip = ctk.CTkFrame(block_local, fg_color="transparent")
+    # Grid in toggle_local
+    ctk.CTkLabel(f_local_hip, text="¿Hipotecado?", text_color="black", font=('Arial', 10), fg_color="transparent").pack(side='left')
     c_hip_local = ctk.CTkComboBox(f_local_hip, values=["Si", "No"], width=70); c_hip_local.pack(side='left', padx=5)
-    f_local_hip.pack_forget()
 
     # --- TAB 3: GESTIÓN Y LEGAL ---
     f3 = ctk.CTkFrame(t3, fg_color="transparent")

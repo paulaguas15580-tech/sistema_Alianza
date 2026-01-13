@@ -2460,7 +2460,7 @@ def abrir_modulo_microcredito():
     global e_n_apertura_micro, e_val_apertura_micro, e_f_apertura_micro
     global e_fecha_visita, e_mapa_direccion
     global e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, lbl_info_total
-    global e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just
+    global e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just, e_info_score
     global t_obs_info_micro
     global f_sub_status, var_sub_status, e_f_comite, e_f_desembolsado, e_f_negado_status, e_f_desistimiento
 
@@ -2563,7 +2563,7 @@ def abrir_modulo_microcredito():
     e_n_apertura_micro.grid(row=1, column=1, sticky='w', padx=10)
     
     ctk.CTkLabel(tab_info, text="Valor de Apertura ($):", text_color="black").grid(row=2, column=0, sticky='w', pady=5)
-    e_val_apertura_micro = ctk.CTkEntry(tab_info, width=150, fg_color="white", text_color="black", border_color="grey")
+    e_val_apertura_micro = ctk.CTkEntry(tab_info, width=150, fg_color="#F0F0F0", text_color="black", state='readonly', border_color="grey")
     e_val_apertura_micro.grid(row=2, column=1, sticky='w', padx=10)
     e_val_apertura_micro.bind('<FocusOut>', on_focus_out_moneda)
     e_val_apertura_micro.bind('<FocusIn>', on_focus_in_moneda)
@@ -2646,6 +2646,11 @@ def abrir_modulo_microcredito():
     ctk.CTkLabel(tab_info, text="Justicia (Prob/Det):", text_color="black").grid(row=row_idx, column=4, sticky='w', pady=2, padx=(40,0))
     e_info_just = ctk.CTkEntry(tab_info, width=200, fg_color="#F0F0F0", text_color="black", state='readonly', border_color="grey")
     e_info_just.grid(row=row_idx, column=5, sticky='w', padx=10)
+
+    row_idx += 1
+    ctk.CTkLabel(tab_info, text="Score Buró:", text_color="black").grid(row=row_idx, column=4, sticky='w', pady=2, padx=(40,0))
+    e_info_score = ctk.CTkEntry(tab_info, width=200, fg_color="#F0F0F0", text_color="black", state='readonly', border_color="grey")
+    e_info_score.grid(row=row_idx, column=5, sticky='w', padx=10)
 
     # OBSERVACIONES ESPECÍFICAS
     row_idx += 2
@@ -2906,14 +2911,14 @@ def limpiar_form_micro():
     
     # Limpiar Info tabs
     if 'e_n_apertura_micro' in globals():
-        for e in [e_n_apertura_micro, e_f_apertura_micro, e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just]:
+        for e in [e_n_apertura_micro, e_f_apertura_micro, e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just, e_info_score]:
             try:
                 e.configure(state='normal')
                 e.delete(0, tk.END)
                 if e != e_val_apertura_micro: e.configure(state='readonly')
             except: pass
         
-        e_val_apertura_micro.delete(0, tk.END)
+        e_val_apertura_micro.configure(state='normal'); e_val_apertura_micro.delete(0, tk.END)
         lbl_info_total.configure(text="$ 0.00")
     
     if 'f_sub_status' in globals():
@@ -2962,10 +2967,10 @@ def buscar_micro_auto(event=None):
     # 24:cart, 25:v_cart, 26:dem, 27:v_dem, 28:prob, 29:det
     
     query = """
-        SELECT cedula, nombre, ruc, numero_carpeta, valor_apertura, apertura, direccion, 
+        SELECT cedula, nombre, ruc, numero_carpeta, valor_apertura, fecha_registro, direccion, 
                estado_civil, cargas_familiares, ingresos_mensuales, fuente_ingreso, ingresos_mensuales_2, fuente_ingreso_2, egresos, total_disponible, 
                casa_dep, valor_casa_dep, hipotecado_casa_dep, terreno, valor_terreno, hipotecado, local, valor_local, hipotecado_local,
-               "cartera castigada", "valor cartera", "demanda judicial", "valor demanda", "problemas justicia", "detalle justicia"
+               "cartera castigada", "valor cartera", "demanda judicial", "valor demanda", "problemas justicia", "detalle justicia", "score_buro"
         FROM Clientes 
     """
     
@@ -2999,17 +3004,63 @@ def buscar_micro_auto(event=None):
         if criteria != "cedula" or (widget != e_cedula_micro):
             e_cedula_micro.delete(0, tk.END); e_cedula_micro.insert(0, res[0])
         
-        # Populate Info Tab (Existing)
-        for e in [e_n_apertura_micro, e_f_apertura_micro]: e.configure(state='normal'); e.delete(0, tk.END)
-        if res[3]: e_n_apertura_micro.insert(0, res[3])
-        if res[5]: e_f_apertura_micro.insert(0, res[5])
-        for e in [e_n_apertura_micro, e_f_apertura_micro]: e.configure(state='readonly')
         
-        e_val_apertura_micro.delete(0, tk.END)
-        if res[4]: e_val_apertura_micro.insert(0, formatear_float_str(res[4]))
+        # INTEGRACIÓN CAJA: Buscar valor apertura y numero apertura en Caja (último registro)
+        val_apertura_caja = None
+        num_apertura_caja = None
+        
+        try:
+             conn_c, c_c = conectar_db()
+             c_c.execute("SELECT valor_apertura, numero_apertura FROM Caja WHERE cedula = %s ORDER BY id DESC LIMIT 1", (res[0],))
+             r_caja = c_c.fetchone()
+             db_manager.release_connection(conn_c)
+             if r_caja:
+                 if r_caja[0]: val_apertura_caja = r_caja[0]
+                 if r_caja[1]: num_apertura_caja = r_caja[1]
+        except: pass
+
+        # N. de Apertura: Prioridad Caja > Clientes (res[3])
+        e_n_apertura_micro.configure(state='normal'); e_n_apertura_micro.delete(0, tk.END)
+        if num_apertura_caja:
+             e_n_apertura_micro.insert(0, str(num_apertura_caja))
+        elif res[3]:
+             e_n_apertura_micro.insert(0, res[3])
+        e_n_apertura_micro.configure(state='readonly')
+
+        # Fecha de Apertura: Clientes.fecha_registro (res[5])
+        # Validar formato fecha antes de insertar
+        fecha_str = ""
+        if res[5]:
+             try:
+                 # Si es objeto date/datetime
+                 if isinstance(res[5], (datetime.date, datetime.datetime)):
+                     fecha_str = res[5].strftime("%d/%m/%Y")
+                 else:
+                     # Si es string, intentar parsear
+                     fs = str(res[5]).split('.')[0]
+                     for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y"]:
+                         try: 
+                             dt = datetime.datetime.strptime(fs, fmt)
+                             fecha_str = dt.strftime("%d/%m/%Y")
+                             break
+                         except: pass
+                     if not fecha_str: fecha_str = fs # Fallback raw
+             except: fecha_str = str(res[5])
+
+        e_f_apertura_micro.configure(state='normal'); e_f_apertura_micro.delete(0, tk.END)
+        if fecha_str: e_f_apertura_micro.insert(0, fecha_str)
+        e_f_apertura_micro.configure(state='readonly')
+
+        # Valor Apertura: Prioridad Caja > Clientes (res[4])
+        e_val_apertura_micro.configure(state='normal'); e_val_apertura_micro.delete(0, tk.END)
+        if val_apertura_caja:
+             e_val_apertura_micro.insert(0, formatear_float_str(val_apertura_caja))
+        elif res[4]: 
+             e_val_apertura_micro.insert(0, formatear_float_str(res[4]))
+        e_val_apertura_micro.configure(state='readonly')
         
         # Populate New Info Fields
-        for e in [e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just]:
+        for e in [e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just, e_info_score]:
             e.configure(state='normal'); e.delete(0, tk.END)
 
         if res[6]: e_info_dir.insert(0, res[6])
@@ -3040,8 +3091,12 @@ def buscar_micro_auto(event=None):
         e_info_dem.insert(0, dem_str)
         just_str = f"{'Si' if res[28] else 'No'} ({res[29] or ''})"
         e_info_just.insert(0, just_str)
+        
+        # Validar índice para score_buro (res[30])
+        score_val = res[30] if len(res) > 30 else ""
+        e_info_score.insert(0, str(score_val) if score_val else "")
 
-        for e in [e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just]:
+        for e in [e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just, e_info_score]:
             e.configure(state='readonly')
 
         # Populate Map Address

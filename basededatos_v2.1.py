@@ -3636,9 +3636,18 @@ def abrir_modulo_rehabilitacion():
             ctk.CTkLabel(row_pat, text="Patrimonio:", width=100, anchor='w', text_color="black").pack(side='left')
             
             pat_str = str(vals[9]) if vals[9] else ""
-            for p_lbl in ["Vehículo", "Casa", "Terreno", "Inversiones"]:
-                chk = ctk.CTkCheckBox(row_pat, text=p_lbl, text_color="black")
-                if p_lbl in pat_str: chk.select()
+            
+            # Map DB Keyword -> UI Label
+            pat_map = [
+                ("Vehiculo", "Vehículo"), 
+                ("Casa", "Casa"), # Matches 'Casa' in 'Casa o Dep'
+                ("Terreno", "Terreno"),
+                ("Inversiones", "Inversiones")
+            ]
+            
+            for keyword, label_text in pat_map:
+                chk = ctk.CTkCheckBox(row_pat, text=label_text, text_color="black")
+                if keyword in pat_str: chk.select()
                 chk.configure(state='disabled')
                 chk.pack(side='left', padx=2)
                 

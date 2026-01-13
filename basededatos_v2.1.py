@@ -1085,15 +1085,6 @@ def cargar_seleccion(event):
             if val['hipotecado_local']: c_hip_local.set(val['hipotecado_local'])
         except: pass
         
-        # Habilitar botón eliminar si es admin
-        try:
-            if NIVEL_ACCESO == 1:
-                btn_eliminar.configure(state='normal')
-        except: pass
-
-    except Exception as e:
-        messagebox.showerror("Error Carga", f"Error cargando selección: {e}")
-        
         # Ingresos 2: ingresos_mensuales_2 (39), fuente_ingreso_2 (40)
         try:
             if val['ingresos_mensuales_2']: e_ingresos_2.insert(0, formatear_float_str(val['ingresos_mensuales_2']))
@@ -1120,6 +1111,17 @@ def cargar_seleccion(event):
             calcular_total_disponible()
 
         toggle_terreno(); toggle_casa(); toggle_local(); toggle_fuente_ingreso(); toggle_fuente_ingreso_2()
+
+        # Habilitar botón eliminar si es admin
+        try:
+            if NIVEL_ACCESO == 1:
+                btn_eliminar.configure(state='normal')
+        except: pass
+
+    except Exception as e:
+        messagebox.showerror("Error Carga", f"Error cargando selección: {e}")
+        
+
 
     except Exception as e: print(f"Error carga: {e}")
 

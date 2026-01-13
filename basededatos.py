@@ -3731,6 +3731,12 @@ def abrir_modulo_rehabilitacion():
         top.title(f"Historial de Llamadas - {ced}")
         top.geometry("1000x600")
         
+        # Correction of window stacking
+        top.lift()
+        top.focus_force()
+        top.grab_set()
+        top.attributes('-topmost', True)
+        
         # Main Scrollable Frame
         main_scroll = ctk.CTkScrollableFrame(top, fg_color="white")
         main_scroll.pack(fill='both', expand=True, padx=10, pady=10)

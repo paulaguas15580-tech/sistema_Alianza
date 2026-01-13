@@ -3212,8 +3212,8 @@ def guardar_microcredito():
     
     conn, cursor = conectar_db()
     try:
-        # Update Clientes table for valor_apertura
-        cursor.execute("UPDATE Clientes SET valor_apertura = %s WHERE cedula = %s", (val_apertura, cedula_micro_actual))
+        # Update Clientes table for valor_apertura AND producto (status)
+        cursor.execute("UPDATE Clientes SET valor_apertura = %s, producto = %s WHERE cedula = %s", (val_apertura, status_micro_actual, cedula_micro_actual))
 
         if id_micro_actual:
             # Update

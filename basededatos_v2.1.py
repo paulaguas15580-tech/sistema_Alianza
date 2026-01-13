@@ -1182,16 +1182,16 @@ def toggle_local(*args):
 def toggle_fuente_ingreso(*args):
     try:
         val = limpiar_moneda(e_ingresos.get())
-        if val > 0: f_fuente_ingreso.pack(anchor='w', pady=(0,5))
-        else: f_fuente_ingreso.pack_forget()
-    except: f_fuente_ingreso.pack_forget()
+        if val > 0: f_fuente_ingreso.grid(row=5, column=0, sticky='w', pady=(0,5))
+        else: f_fuente_ingreso.grid_remove()
+    except: f_fuente_ingreso.grid_remove()
 
 def toggle_fuente_ingreso_2(*args):
     try:
         val = limpiar_moneda(e_ingresos_2.get())
-        if val > 0: f_fuente_ingreso_2.pack(anchor='w', pady=(0,5))
-        else: f_fuente_ingreso_2.pack_forget()
-    except: f_fuente_ingreso_2.pack_forget()
+        if val > 0: f_fuente_ingreso_2.grid(row=8, column=0, sticky='w', pady=(0,5))
+        else: f_fuente_ingreso_2.grid_remove()
+    except: f_fuente_ingreso_2.grid_remove()
 
 def calcular_total_disponible(*args):
     """Calcula y muestra el total disponible: Ingresos 1 + Ingresos 2 - Egresos"""
@@ -1200,9 +1200,9 @@ def calcular_total_disponible(*args):
         ing2 = limpiar_moneda(e_ingresos_2.get())
         egr = limpiar_moneda(e_egresos.get())
         total = ing1 + ing2 - egr
-        lbl_total_disponible_valor.config(text="$ " + formatear_float_str(total))
+        lbl_total_disponible_valor.configure(text="$ " + formatear_float_str(total))
     except Exception as e:
-        lbl_total_disponible_valor.config(text="$ 0.00")
+        lbl_total_disponible_valor.configure(text="$ 0.00")
 
 # --- VENTANA USUARIOS ---
 def win_gestion_usuarios():
@@ -2184,14 +2184,14 @@ def abrir_modulo_clientes():
 
     c2_1 = ctk.CTkFrame(f2, fg_color="transparent")
     c2_1.grid(row=0, column=0, padx=20, pady=10, sticky='n')
-    ctk.CTkLabel(c2_1, text="INGRESOS Y EGRESOS", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").pack(pady=5)
+    ctk.CTkLabel(c2_1, text="INGRESOS Y EGRESOS", text_color="#1860C3", font=('Arial', 12, 'bold'), fg_color="transparent").grid(row=0, column=0, sticky='w', pady=5)
     
-    ctk.CTkLabel(c2_1, text="Score Buró (1-999):", text_color="black", fg_color="transparent").pack(anchor='w')
-    e_score_buro = crear_entry(c2_1, width=100); e_score_buro.pack(anchor='w')
+    ctk.CTkLabel(c2_1, text="Score Buró (1-999):", text_color="black", fg_color="transparent").grid(row=1, column=0, sticky='w')
+    e_score_buro = crear_entry(c2_1, width=100); e_score_buro.grid(row=2, column=0, sticky='w')
     e_score_buro.bind('<Return>', saltar_campo)
     
-    ctk.CTkLabel(c2_1, text="Ingresos Principal ($):", text_color="black", fg_color="transparent").pack(anchor='w', pady=(5,0))
-    e_ingresos = crear_entry(c2_1); e_ingresos.pack(fill='x')
+    ctk.CTkLabel(c2_1, text="Ingresos Principal ($):", text_color="black", fg_color="transparent").grid(row=3, column=0, sticky='w', pady=(5,0))
+    e_ingresos = crear_entry(c2_1); e_ingresos.grid(row=4, column=0, sticky='ew')
     e_ingresos.bind('<Return>', saltar_campo)
     e_ingresos.bind('<FocusOut>', lambda e: (on_focus_out_moneda(e), toggle_fuente_ingreso())) 
     e_ingresos.bind('<FocusIn>', on_focus_in_moneda)
@@ -2200,11 +2200,11 @@ def abrir_modulo_clientes():
     ctk.CTkLabel(f_fuente_ingreso, text="Fuente:", text_color="black", fg_color="transparent").pack(side='left')
     c_fuente_ingreso = ctk.CTkComboBox(f_fuente_ingreso, values=["Sueldo", "Negocio", "Jubilación", "Arriendo", "Inversiones", "Remesas del Exterior", "Otros"], width=150, fg_color="white", text_color="black", border_color="grey")
     c_fuente_ingreso.pack(side='left', padx=5)
-    f_fuente_ingreso.pack(fill='x')
-    f_fuente_ingreso.pack_forget()
+    # f_fuente_ingreso initialized hidden
+    f_fuente_ingreso.grid_remove() 
     
-    ctk.CTkLabel(c2_1, text="Ingresos Secundarios ($):", text_color="black", fg_color="transparent").pack(anchor='w', pady=(5,0))
-    e_ingresos_2 = crear_entry(c2_1); e_ingresos_2.pack(fill='x')
+    ctk.CTkLabel(c2_1, text="Ingresos Secundarios ($):", text_color="black", fg_color="transparent").grid(row=6, column=0, sticky='w', pady=(5,0))
+    e_ingresos_2 = crear_entry(c2_1); e_ingresos_2.grid(row=7, column=0, sticky='ew')
     e_ingresos_2.bind('<Return>', saltar_campo)
     e_ingresos_2.bind('<FocusOut>', lambda e: (on_focus_out_moneda(e), toggle_fuente_ingreso_2())) 
     e_ingresos_2.bind('<FocusIn>', on_focus_in_moneda)
@@ -2213,18 +2213,18 @@ def abrir_modulo_clientes():
     ctk.CTkLabel(f_fuente_ingreso_2, text="Fuente 2:", text_color="black", fg_color="transparent").pack(side='left')
     c_fuente_ingreso_2 = ctk.CTkComboBox(f_fuente_ingreso_2, values=["Sueldo", "Negocio", "Jubilación", "Arriendo", "Inversiones", "Remesas del Exterior", "Otros"], width=150, fg_color="white", text_color="black", border_color="grey")
     c_fuente_ingreso_2.pack(side='left', padx=5)
-    f_fuente_ingreso_2.pack(fill='x')
-    f_fuente_ingreso_2.pack_forget()
+    # f_fuente_ingreso_2 initialized hidden
+    f_fuente_ingreso_2.grid_remove()
     
-    ctk.CTkLabel(c2_1, text="Egresos Mensuales ($):", text_color="black", fg_color="transparent").pack(anchor='w', pady=(5,0))
-    e_egresos = crear_entry(c2_1); e_egresos.pack(fill='x')
+    ctk.CTkLabel(c2_1, text="Egresos Mensuales ($):", text_color="black", fg_color="transparent").grid(row=9, column=0, sticky='w', pady=(5,0))
+    e_egresos = crear_entry(c2_1); e_egresos.grid(row=10, column=0, sticky='ew')
     e_egresos.bind('<Return>', saltar_campo)
     e_egresos.bind('<FocusOut>', lambda e: (on_focus_out_moneda(e), calcular_total_disponible()))
     e_egresos.bind('<FocusIn>', on_focus_in_moneda)
     
-    ctk.CTkLabel(c2_1, text="Total Disponible:", font=('Arial', 12, 'bold'), text_color="black", fg_color="transparent").pack(anchor='w', pady=(10,0))
+    ctk.CTkLabel(c2_1, text="Total Disponible:", font=('Arial', 12, 'bold'), text_color="black", fg_color="transparent").grid(row=11, column=0, sticky='w', pady=(10,0))
     lbl_total_disponible_valor = ctk.CTkLabel(c2_1, text="$ 0.00", font=('Arial', 16, 'bold'), text_color='#006400', fg_color="transparent")
-    lbl_total_disponible_valor.pack(anchor='w')
+    lbl_total_disponible_valor.grid(row=12, column=0, sticky='w')
     
     e_ingresos.bind('<KeyRelease>', calcular_total_disponible)
     e_ingresos_2.bind('<KeyRelease>', calcular_total_disponible)

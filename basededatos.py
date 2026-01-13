@@ -3602,14 +3602,54 @@ def abrir_modulo_rehabilitacion():
         messagebox.showinfo("Historial de Visitas", msg)
 
     # UI
+    def ver_informacion():
+        ced = var_cedula.get()
+        if not ced: return
+        conn, cursor = conectar_db()
+        cursor.execute("SELECT nombre, telefono, direccion, producto FROM Clientes WHERE cedula = %s", (ced,))
+        res = cursor.fetchone()
+        db_manager.release_connection(conn)
+        if res:
+            msg = f"Nombre: {res[0]}\nTeléfono: {res[1]}\nDirección: {res[2]}\nProducto: {res[3]}"
+            messagebox.showinfo("Información del Cliente", msg)
+        else:
+            messagebox.showwarning("Aviso", "No se encontraron datos del cliente.")
+
+    def ver_buro():
+        ced = var_cedula.get()
+        if not ced: return
+        conn, cursor = conectar_db()
+        cursor.execute("SELECT buro_archivo_ruta FROM Caja WHERE cedula = %s ORDER BY id DESC LIMIT 1", (ced,))
+        res = cursor.fetchone()
+        db_manager.release_connection(conn)
+        
+        if res and res[0]:
+            ruta = res[0]
+            if os.path.exists(ruta):
+                try:
+                    os.startfile(ruta)
+                except Exception as e:
+                    messagebox.showerror("Error", f"No se pudo abrir el archivo: {e}")
+            else:
+                messagebox.showwarning("Aviso", f"El archivo no existe en la ruta:\n{ruta}")
+        else:
+            messagebox.showinfo("Buró", "No hay archivo de Buró registrado en Caja.")
+
+    # UI
     win, frame, nb = crear_modulo_generico("Módulo de Rehabilitación", search_callback=load_rehab_data)
     
     # --- PESTAÑA GENERAL (Contenido extra) ---
     extra_f = ctk.CTkFrame(frame, fg_color="transparent")
     extra_f.pack(pady=10, fill='x')
     
-    ctk.CTkButton(extra_f, text="📞 Ver Llamadas", command=ver_llamadas, fg_color="#5bc0de", text_color="white", width=150).pack(side='left', padx=10)
-    ctk.CTkButton(extra_f, text="🏠 Ver Visitas Micro", command=ver_visitas, fg_color="#f0ad4e", text_color="white", width=150).pack(side='left', padx=10)
+    # 1. Ver Información (Azul)
+    ctk.CTkButton(extra_f, text="ℹ️ Ver Información", command=ver_informacion, fg_color="#1860C3", width=140).pack(side='left', padx=5)
+    # 2. Ver Llamadas (Celeste)
+    ctk.CTkButton(extra_f, text="📞 Ver Llamadas", command=ver_llamadas, fg_color="#17a2b8", width=140).pack(side='left', padx=5)
+    # 3. Ver Visitas (Naranja)
+    ctk.CTkButton(extra_f, text="🏠 Ver Visitas", command=ver_visitas, fg_color="#fd7e14", width=140).pack(side='left', padx=5)
+    # 4. Ver Buró (Gris)
+    ctk.CTkButton(extra_f, text="📄 Ver Buró", command=ver_buro, fg_color="#6c757d", width=140).pack(side='left', padx=5)
 
     # --- PESTAÑA PROCESO ---
     nb.add("Proceso")

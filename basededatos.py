@@ -3579,7 +3579,99 @@ def abrir_modulo_rehabilitacion():
     def ver_llamadas():
         ced = var_cedula.get()
         if not ced: return
-        messagebox.showinfo("Historial de Llamadas", f"Mostrando historial de llamadas para: {ced}\n(Módulo en desarrollo)")
+        
+        conn, cursor = conectar_db()
+        cursor.execute("SELECT * FROM Microcreditos WHERE cedula_cliente = %s ORDER BY id DESC LIMIT 1", (ced,))
+        data = cursor.fetchone()
+        db_manager.release_connection(conn)
+        
+        if not data:
+            messagebox.showinfo("Llamadas", "No hay registros de Microcrédito para este cliente.")
+            return
+
+        # data indices based on standard schema:
+        # ref1: rel=5, time=6, dir=7, viv=8, cargas=9, pat=10, resp=11, fecha=19, hora=20, nom=21, tel=22
+        # ref2: rel=12, time=13, dir=14, viv=15, cargas=16, pat=17, resp=18, fecha=23, hora=24, nom=25, tel=26
+
+        top = ctk.CTkToplevel(win)
+        top.title(f"Historial de Llamadas - {ced}")
+        top.geometry("1000x600")
+        
+        # Main Scrollable Frame
+        main_scroll = ctk.CTkScrollableFrame(top, fg_color="white")
+        main_scroll.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Columns
+        col1 = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        col1.pack(side='left', fill='both', expand=True, padx=5)
+        
+        col2 = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        col2.pack(side='left', fill='both', expand=True, padx=5)
+        
+        def crear_bloque_referencia(parent, title, vals, prefix):
+            # vals: [nom, tel, fecha, hora, rel, time, dir, viv, cargas, pat, resp]
+            f = ctk.CTkFrame(parent, fg_color="#F0F0F0", border_width=1, border_color="grey")
+            f.pack(fill='x', pady=5, padx=5)
+            ctk.CTkLabel(f, text=title, font=('Arial', 12, 'bold'), text_color="#1860C3").pack(pady=5)
+            
+            # Helper for rows
+            def add_row(lbl, val):
+                row = ctk.CTkFrame(f, fg_color="transparent")
+                row.pack(fill='x', padx=5, pady=2)
+                ctk.CTkLabel(row, text=lbl, width=100, anchor='w', text_color="black").pack(side='left')
+                e = ctk.CTkEntry(row, fg_color="white", text_color="black")
+                e.pack(side='left', fill='x', expand=True)
+                e.insert(0, str(val) if val else "")
+                e.configure(state='disabled')
+
+            add_row("Nombre Ref:", vals[0])
+            add_row("Teléfono:", vals[1])
+            add_row("Fecha:", vals[2])
+            add_row("Hora:", vals[3])
+            add_row("Relación:", vals[4])
+            add_row("Tiempo:", vals[5])
+            add_row("Dirección:", vals[6])
+            
+            # Vivienda (Combo simulated)
+            row_viv = ctk.CTkFrame(f, fg_color="transparent")
+            row_viv.pack(fill='x', padx=5, pady=2)
+            ctk.CTkLabel(row_viv, text="Vivienda:", width=100, anchor='w', text_color="black").pack(side='left')
+            e_viv = ctk.CTkEntry(row_viv, fg_color="white", text_color="black")
+            e_viv.pack(side='left', fill='x', expand=True)
+            e_viv.insert(0, str(vals[7]) if vals[7] else "")
+            e_viv.configure(state='disabled')
+            
+            add_row("Cargas Fam:", vals[8])
+            
+            # Patrimonio Checkboxes (Read only)
+            row_pat = ctk.CTkFrame(f, fg_color="transparent")
+            row_pat.pack(fill='x', padx=5, pady=5)
+            ctk.CTkLabel(row_pat, text="Patrimonio:", width=100, anchor='w', text_color="black").pack(side='left')
+            
+            pat_str = str(vals[9]) if vals[9] else ""
+            for p_lbl in ["Vehículo", "Casa", "Terreno", "Inversiones"]:
+                chk = ctk.CTkCheckBox(row_pat, text=p_lbl, text_color="black")
+                if p_lbl in pat_str: chk.select()
+                chk.configure(state='disabled')
+                chk.pack(side='left', padx=2)
+                
+            # Responsable
+            row_resp = ctk.CTkFrame(f, fg_color="transparent")
+            row_resp.pack(fill='x', padx=5, pady=5)
+            chk_resp = ctk.CTkCheckBox(row_resp, text="¿Es Persona Responsable?", text_color="black")
+            if vals[10] == "Si" or vals[10] == "1": chk_resp.select()
+            chk_resp.configure(state='disabled')
+            chk_resp.pack(side='left', padx=30)
+
+        # Ref 1 Data
+        # Indices: nom=21, tel=22, fecha=19, hora=20, rel=5, time=6, dir=7, viv=8, cargas=9, pat=10, resp=11
+        vals1 = [data[21], data[22], data[19], data[20], data[5], data[6], data[7], data[8], data[9], data[10], data[11]]
+        crear_bloque_referencia(col1, "Verificación Referencia 1", vals1, "r1")
+
+        # Ref 2 Data
+        # Indices: nom=25, tel=26, fecha=23, hora=24, rel=12, time=13, dir=14, viv=15, cargas=16, pat=17, resp=18
+        vals2 = [data[25], data[26], data[23], data[24], data[12], data[13], data[14], data[15], data[16], data[17], data[18]]
+        crear_bloque_referencia(col2, "Verificación Referencia 2", vals2, "r2")
 
     def ver_visitas():
         ced = var_cedula.get()

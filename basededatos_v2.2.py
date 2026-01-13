@@ -3618,9 +3618,43 @@ def abrir_modulo_rehabilitacion():
     v_disponible = tk.StringVar()
     v_patrimonio = tk.StringVar()
     v_legal = tk.StringVar()
+    
+    # Variables Deudas (Valores y Descripciones)
+    v_val_emp = tk.StringVar(); v_desc_emp = tk.StringVar()
+    v_val_ban = tk.StringVar(); v_desc_ban = tk.StringVar()
+    v_val_coop = tk.StringVar(); v_desc_coop = tk.StringVar()
+    v_val_cob = tk.StringVar(); v_desc_cob = tk.StringVar()
+    
+    # Variables Cita
+    v_fecha_cita = tk.StringVar()
 
     # Referencias a widgets para bloqueo
     list_bloqueables = []
+    
+    # --- AUTO-UPDATE DB SCHEMA ---
+    try:
+        conn_init, cursor_init = conectar_db()
+        # Verificar columnas y crearlas si faltan
+        table_info = cursor_init.execute("PRAGMA table_info(Rehabilitacion)").fetchall()
+        cols_present = [c[1] for c in table_info]
+        
+        new_cols = {
+            "val_empresas": "REAL", "desc_empresas": "TEXT",
+            "val_bancos": "REAL", "desc_bancos": "TEXT",
+            "val_cooperativas": "REAL", "desc_cooperativas": "TEXT",
+            "val_cobranzas": "REAL", "desc_cobranzas": "TEXT",
+            "fecha_cita": "TEXT", "informe_cita": "TEXT"
+        }
+        
+        for col_name, col_type in new_cols.items():
+            if col_name not in cols_present:
+                cursor_init.execute(f"ALTER TABLE Rehabilitacion ADD COLUMN {col_name} {col_type}")
+        
+        conn_init.commit()
+    except Exception as e:
+        print(f"Error updating schema: {e}")
+    finally:
+        db_manager.release_connection(conn_init)
 
     def load_rehab_data(cedula):
         if not cedula:
@@ -3634,27 +3668,57 @@ def abrir_modulo_rehabilitacion():
             for v in [v_n_apertura, v_f_apertura, v_val_apertura, v_edad, v_est_civil, v_cargas, v_telefono, v_email, v_vivienda, v_disponible, v_patrimonio, v_legal]:
                 v.set("")
                 
+            # Clear Deudas
+            for v in [v_val_emp, v_desc_emp, v_val_ban, v_desc_ban, v_val_coop, v_desc_coop, v_val_cob, v_desc_cob]:
+                v.set("")
+                
+            v_fecha_cita.set("")
+            txt_informe_cita.delete("1.0", tk.END)
+                
             update_lock_ui()
             return
 
         var_cedula.set(cedula)
         conn, cursor = conectar_db()
         
-        # 1. Load Rehabilitacion Data
-        cursor.execute("SELECT fecha_inicio, terminos, resultado, finalizado FROM Rehabilitacion WHERE cedula_cliente = %s", (cedula,))
+        # 1. Load Rehabilitacion Data (Updated Query)
+        cursor.execute("""
+            SELECT fecha_inicio, terminos, resultado, finalizado, 
+                   val_empresas, desc_empresas, val_bancos, desc_bancos, 
+                   val_cooperativas, desc_cooperativas, val_cobranzas, desc_cobranzas,
+                   fecha_cita, informe_cita
+            FROM Rehabilitacion WHERE cedula_cliente = %s
+        """, (cedula,))
         res = cursor.fetchone()
         
         txt_terminos.delete("1.0", tk.END)
         txt_resultado.delete("1.0", tk.END)
+        txt_informe_cita.delete("1.0", tk.END)
 
         if res:
             var_f_inicio.set(res[0] or "")
             txt_terminos.insert("1.0", res[1] or "")
             txt_resultado.insert("1.0", res[2] or "")
             var_finalizado.set(res[3] or 0)
+            
+            # Load Deudas
+            v_val_emp.set(f"{res[4]:g}" if res[4] else "") # :g removes trailing zeros if integer
+            v_desc_emp.set(res[5] or "")
+            v_val_ban.set(f"{res[6]:g}" if res[6] else "")
+            v_desc_ban.set(res[7] or "")
+            v_val_coop.set(f"{res[8]:g}" if res[8] else "")
+            v_desc_coop.set(res[9] or "")
+            v_val_cob.set(f"{res[10]:g}" if res[10] else "")
+            v_desc_cob.set(res[11] or "")
+            
+            # Load Cita
+            v_fecha_cita.set(res[12] or "")
+            txt_informe_cita.insert("1.0", res[13] or "")
         else:
             var_f_inicio.set("")
             var_finalizado.set(0)
+            for v in [v_val_emp, v_desc_emp, v_val_ban, v_desc_ban, v_val_coop, v_desc_coop, v_val_cob, v_desc_cob]: v.set("")
+            v_fecha_cita.set("")
             
         # 2. Load Client Data for Summary
         query_cli = """SELECT apertura, fecha_registro, valor_apertura, "fecha nacimiento", estado_civil, cargas_familiares, telefono, email, tipo_vivienda, total_disponible, 
@@ -3735,18 +3799,41 @@ def abrir_modulo_rehabilitacion():
         term = txt_terminos.get("1.0", tk.END).strip()
         rest = txt_resultado.get("1.0", tk.END).strip()
         fin = var_finalizado.get()
+        
+        # Helper to clean float
+        def clean_float(s):
+            try: return float(s)
+            except: return 0.0
+            
+        val_emp = clean_float(v_val_emp.get()); desc_emp = v_desc_emp.get().strip()
+        val_ban = clean_float(v_val_ban.get()); desc_ban = v_desc_ban.get().strip()
+        val_coop = clean_float(v_val_coop.get()); desc_coop = v_desc_coop.get().strip()
+        val_cob = clean_float(v_val_cob.get()); desc_cob = v_desc_cob.get().strip()
+        
+        f_cita = v_fecha_cita.get().strip()
+        inf_cita = txt_informe_cita.get("1.0", tk.END).strip()
 
         conn, cursor = conectar_db()
         try:
             cursor.execute("""
-                INSERT INTO Rehabilitacion (cedula_cliente, fecha_inicio, terminos, resultado, finalizado)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO Rehabilitacion (
+                    cedula_cliente, fecha_inicio, terminos, resultado, finalizado,
+                    val_empresas, desc_empresas, val_bancos, desc_bancos,
+                    val_cooperativas, desc_cooperativas, val_cobranzas, desc_cobranzas,
+                    fecha_cita, informe_cita
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT(cedula_cliente) DO UPDATE SET
-                fecha_inicio=excluded.fecha_inicio,
-                terminos=excluded.terminos,
-                resultado=excluded.resultado,
-                finalizado=excluded.finalizado
-            """, (ced, f_ini, term, rest, fin))
+                    fecha_inicio=excluded.fecha_inicio,
+                    terminos=excluded.terminos,
+                    resultado=excluded.resultado,
+                    finalizado=excluded.finalizado,
+                    val_empresas=excluded.val_empresas, desc_empresas=excluded.desc_empresas,
+                    val_bancos=excluded.val_bancos, desc_bancos=excluded.desc_bancos,
+                    val_cooperativas=excluded.val_cooperativas, desc_cooperativas=excluded.desc_cooperativas,
+                    val_cobranzas=excluded.val_cobranzas, desc_cobranzas=excluded.desc_cobranzas,
+                    fecha_cita=excluded.fecha_cita, informe_cita=excluded.informe_cita
+            """, (ced, f_ini, term, rest, fin, val_emp, desc_emp, val_ban, desc_ban, val_coop, desc_coop, val_cob, desc_cob, f_cita, inf_cita))
             conn.commit()
             messagebox.showinfo("Éxito", "Datos de rehabilitación guardados.")
             registrar_auditoria("Guardar Rehabilitación", id_cliente=ced, detalles=f"Estado finalizado: {fin}")
@@ -3966,66 +4053,151 @@ def abrir_modulo_rehabilitacion():
     # --- CLIENT DATA SUMMARY FRAME ---
     # This frame will show the client's financial/personal summary
     
-    client_info_frame = ctk.CTkScrollableFrame(frame, height=200, fg_color="white", corner_radius=10, border_width=1, border_color="#CCCCCC")
-    client_info_frame.pack(fill='x', padx=10, pady=5)
+    # --- CLIENT DATA SUMMARY FRAME ---
+    # This frame will show the client's financial/personal summary
     
-    ctk.CTkLabel(client_info_frame, text="DATOS FINANCIEROS Y LEGALES DEL CLIENTE", font=('Arial', 12, 'bold'), text_color="#1860C3").pack(anchor='w', pady=(5,10))
+    client_info_frame = ctk.CTkFrame(frame, fg_color="white", corner_radius=10, border_width=1, border_color="#CCCCCC")
+    client_info_frame.pack(fill='both', expand=True, padx=10, pady=5)
+    
+    ctk.CTkLabel(client_info_frame, text="DATOS FINANCIEROS Y LEGALES DEL CLIENTE", font=('Arial', 12, 'bold'), text_color="#1860C3").pack(anchor='w', pady=(5,10), padx=10)
     
     # Grid info
     info_grid = ctk.CTkFrame(client_info_frame, fg_color="transparent")
-    info_grid.pack(fill='both', expand=True)
+    info_grid.pack(fill='both', expand=True, padx=5)
     
-    def add_read_field(parent, row, col, lbl, var, width=150):
-        ctk.CTkLabel(parent, text=lbl, font=('Arial', 10, 'bold'), text_color="grey").grid(row=row, column=col, sticky='w', padx=5)
-        e = ctk.CTkEntry(parent, textvariable=var, width=width, state='readonly', fg_color="#F9F9F9", border_color="lightgrey", text_color="black")
-        e.grid(row=row+1, column=col, sticky='w', padx=5, pady=(0,10))
+    # Configurar columnas para que se expandan equitativamente
+    info_grid.grid_columnconfigure((0,1,2,3), weight=1)
+    
+    def add_read_field(parent, row, col, lbl, var):
+        f_field = ctk.CTkFrame(parent, fg_color="transparent")
+        f_field.grid(row=row, column=col, sticky='nsew', padx=5, pady=2)
+        ctk.CTkLabel(f_field, text=lbl, font=('Arial', 10, 'bold'), text_color="grey", anchor="w").pack(fill='x')
+        e = ctk.CTkEntry(f_field, textvariable=var, state='readonly', fg_color="#F9F9F9", border_color="lightgrey", text_color="black")
+        e.pack(fill='x')
         
-    # Row 0
-    add_read_field(info_grid, 0, 0, "N. Apertura", v_n_apertura, 100)
-    add_read_field(info_grid, 0, 1, "F. Apertura", v_f_apertura, 100)
-    add_read_field(info_grid, 0, 2, "Valor Apertura", v_val_apertura, 100)
-    add_read_field(info_grid, 0, 3, "Edad", v_edad, 80)
-    add_read_field(info_grid, 0, 4, "Estado Civil", v_est_civil, 100)
-    add_read_field(info_grid, 0, 5, "Cargas", v_cargas, 50)
+    # Row 0: N. Apertura | F. Apertura | Valor Apertura | Edad
+    add_read_field(info_grid, 0, 0, "N. Apertura", v_n_apertura)
+    add_read_field(info_grid, 0, 1, "F. Apertura", v_f_apertura)
+    add_read_field(info_grid, 0, 2, "Valor Apertura", v_val_apertura)
+    add_read_field(info_grid, 0, 3, "Edad", v_edad)
+
+    # Row 1: Estado Civil | Cargas | Telef/Celular | Email
+    add_read_field(info_grid, 1, 0, "Estado Civil", v_est_civil)
+    add_read_field(info_grid, 1, 1, "Cargas", v_cargas)
+    add_read_field(info_grid, 1, 2, "Telef/Celular", v_telefono)
+    add_read_field(info_grid, 1, 3, "Email", v_email)
     
-    # Row 2
-    add_read_field(info_grid, 2, 0, "Telef/Celular", v_telefono, 120)
-    add_read_field(info_grid, 2, 1, "Email", v_email, 180)
-    add_read_field(info_grid, 2, 2, "Tipo Vivienda", v_vivienda, 120)
-    add_read_field(info_grid, 2, 3, "Total Disponible $", v_disponible, 120)
+    # Row 2: Tipo Vivienda | Total Disponible | (Empty) | (Empty)
+    add_read_field(info_grid, 2, 0, "Tipo Vivienda", v_vivienda)
+    add_read_field(info_grid, 2, 1, "Total Disponible $", v_disponible)
     
-    # Warning Fields (Spanning)
-    ctk.CTkLabel(info_grid, text="Patrimonio:", font=('Arial', 10, 'bold'), text_color="grey").grid(row=4, column=0, sticky='w', padx=5)
-    e_pat = ctk.CTkEntry(info_grid, textvariable=v_patrimonio, state='readonly', fg_color="#E8F8F5", text_color="#145A32", border_color="#A2D9CE", width=600)
-    e_pat.grid(row=5, column=0, columnspan=4, sticky='ew', padx=5, pady=(0,10))
+    # Row 3: Patrimonio (Spans all columns)
+    f_pat = ctk.CTkFrame(info_grid, fg_color="transparent")
+    f_pat.grid(row=3, column=0, columnspan=4, sticky='ew', padx=5, pady=(5,2))
+    ctk.CTkLabel(f_pat, text="Patrimonio:", font=('Arial', 10, 'bold'), text_color="grey", anchor="w").pack(fill='x')
+    e_pat = ctk.CTkEntry(f_pat, textvariable=v_patrimonio, state='readonly', fg_color="#E8F8F5", text_color="#145A32", border_color="#A2D9CE")
+    e_pat.pack(fill='x')
     
-    ctk.CTkLabel(info_grid, text="Antecedentes Legales:", font=('Arial', 10, 'bold'), text_color="grey").grid(row=6, column=0, sticky='w', padx=5)
-    e_leg = ctk.CTkEntry(info_grid, textvariable=v_legal, state='readonly', fg_color="#FDEDEC", text_color="#922B21", border_color="#F5B7B1", width=600)
-    e_leg.grid(row=7, column=0, columnspan=4, sticky='ew', padx=5, pady=(0,10))
+    # Row 4: Legal (Spans all columns)
+    f_leg = ctk.CTkFrame(info_grid, fg_color="transparent")
+    f_leg.grid(row=4, column=0, columnspan=4, sticky='ew', padx=5, pady=(5,10))
+    ctk.CTkLabel(f_leg, text="Antecedentes Legales:", font=('Arial', 10, 'bold'), text_color="grey", anchor="w").pack(fill='x')
+    e_leg = ctk.CTkEntry(f_leg, textvariable=v_legal, state='readonly', fg_color="#FDEDEC", text_color="#922B21", border_color="#F5B7B1")
+    e_leg.pack(fill='x')
 
     # --- PESTAÑA PROCESO ---
     nb.add("Proceso")
     tab_p = nb.tab("Proceso")
     
-    p_main = ctk.CTkScrollableFrame(tab_p, fg_color="white", corner_radius=10)
+    p_main = ctk.CTkFrame(tab_p, fg_color="white", corner_radius=10)
     p_main.pack(fill='both', expand=True, padx=10, pady=10)
     
+    # Configure 2 Main Columns
+    p_main.grid_columnconfigure(0, weight=1)
+    p_main.grid_columnconfigure(1, weight=1)
+    p_main.grid_rowconfigure(0, weight=1)
+    
+    # --- COLUMNA IZQUIERDA: ANÁLISIS DE DEUDAS ---
+    f_left = ctk.CTkFrame(p_main, fg_color="#F9F9F9", border_width=1, border_color="#DDDDDD")
+    f_left.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+    f_left.grid_columnconfigure(2, weight=1) # col 0 label, 1 val, 2 desc
+    
+    ctk.CTkLabel(f_left, text="ANÁLISIS DE DEUDAS", font=('Arial', 14, 'bold'), text_color="#C0392B").pack(pady=10)
+    
+    # Headers Row
+    h_row = ctk.CTkFrame(f_left, fg_color="transparent")
+    h_row.pack(fill='x', padx=10)
+    ctk.CTkLabel(h_row, text="", width=120).pack(side='left') # spacer for labels
+    ctk.CTkLabel(h_row, text="Valor ($)", width=80, font=('Arial', 10, 'bold')).pack(side='left', padx=5)
+    ctk.CTkLabel(h_row, text="Descripción", font=('Arial', 10, 'bold')).pack(side='left', padx=5)
+
+    def add_debt_row(parent, label, v_val, v_desc):
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill='x', padx=10, pady=5)
+        
+        ctk.CTkLabel(row, text=label, width=120, anchor='w', text_color="black", font=('Arial', 11, 'bold')).pack(side='left')
+        
+        e_val = ctk.CTkEntry(row, textvariable=v_val, width=80, placeholder_text="$")
+        e_val.pack(side='left', padx=5)
+        
+        e_desc = ctk.CTkEntry(row, textvariable=v_desc, width=200, placeholder_text="Detalle / Institución")
+        e_desc.pack(side='left', fill='x', expand=True, padx=5)
+        
+        list_bloqueables.append(e_val)
+        list_bloqueables.append(e_desc)
+
+    add_debt_row(f_left, "Empresas", v_val_emp, v_desc_emp)
+    add_debt_row(f_left, "Bancos", v_val_ban, v_desc_ban)
+    add_debt_row(f_left, "Cooperativas", v_val_coop, v_desc_coop)
+    add_debt_row(f_left, "Emp. Cobranza", v_val_cob, v_desc_cob)
+    
+    # --- SECCIÓN AGENDAMIENTO / CITA ---
+    ctk.CTkLabel(f_left, text="AGENDAMIENTO / CITA", font=('Arial', 12, 'bold'), text_color="#1860C3").pack(pady=(20,5))
+    
+    f_cita = ctk.CTkFrame(f_left, fg_color="#EBF5FB", border_width=1, border_color="#AED6F1")
+    f_cita.pack(fill='x', padx=10, pady=5)
+    
+    # Row Fecha
+    row_fc = ctk.CTkFrame(f_cita, fg_color="transparent")
+    row_fc.pack(fill='x', padx=5, pady=5)
+    ctk.CTkLabel(row_fc, text="Fecha Cita:", width=80, anchor='w').pack(side='left')
+    e_fecha_cita = ctk.CTkEntry(row_fc, textvariable=v_fecha_cita, width=120, placeholder_text="DD/MM/YYYY")
+    e_fecha_cita.pack(side='left', padx=5)
+    list_bloqueables.append(e_fecha_cita)
+    
+    def set_hoy():
+        v_fecha_cita.set(datetime.datetime.now().strftime("%d/%m/%Y"))
+        
+    ctk.CTkButton(row_fc, text="📅 Hoy", width=60, command=set_hoy, fg_color="#28a745", hover_color="#218838").pack(side='left', padx=5)
+    
+    # Row Informe
+    ctk.CTkLabel(f_cita, text="Informe Cita (Resultado Presencial):", anchor='w').pack(fill='x', padx=5, pady=(5,0))
+    txt_informe_cita = ctk.CTkTextbox(f_cita, height=100, border_width=1)
+    txt_informe_cita.pack(fill='x', padx=5, pady=5)
+    list_bloqueables.append(txt_informe_cita)
+    
+    # --- COLUMNA DERECHA: REHABILITACIÓN (Textos) ---
+    f_right = ctk.CTkFrame(p_main, fg_color="#F9F9F9", border_width=1, border_color="#DDDDDD")
+    f_right.grid(row=0, column=1, sticky='nsew', padx=5, pady=5)
+    f_right.grid_columnconfigure(0, weight=1)
+    f_right.grid_rowconfigure(3, weight=1) # Resultado expands
+    
     # F. Inicio
-    ctk.CTkLabel(p_main, text="Fecha de Inicio de Rehabilitación:", font=('Arial', 12, 'bold'), text_color="black").pack(anchor='w', pady=(10,5))
-    e_f_inicio = ctk.CTkEntry(p_main, textvariable=var_f_inicio, width=200)
-    e_f_inicio.pack(anchor='w', padx=5)
+    ctk.CTkLabel(f_right, text="Fecha de Inicio:", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=0, sticky='w', padx=10, pady=(10,0))
+    e_f_inicio = ctk.CTkEntry(f_right, textvariable=var_f_inicio)
+    e_f_inicio.grid(row=1, column=0, sticky='ew', padx=10, pady=(0,10))
     list_bloqueables.append(e_f_inicio)
     
     # Términos
-    ctk.CTkLabel(p_main, text="Términos de Rehabilitación:", font=('Arial', 12, 'bold'), text_color="black").pack(anchor='w', pady=(20,5))
-    txt_terminos = ctk.CTkTextbox(p_main, height=120, border_width=1)
-    txt_terminos.pack(fill='x', padx=5)
+    ctk.CTkLabel(f_right, text="Términos de Rehabilitación:", font=('Arial', 11, 'bold'), text_color="black").grid(row=2, column=0, sticky='w', padx=10, pady=(10,0))
+    txt_terminos = ctk.CTkTextbox(f_right, height=100, border_width=1)
+    txt_terminos.grid(row=3, column=0, sticky='ew', padx=10, pady=(0,10))
     list_bloqueables.append(txt_terminos)
     
     # Resultado
-    ctk.CTkLabel(p_main, text="Resultado / Conclusiones:", font=('Arial', 12, 'bold'), text_color="black").pack(anchor='w', pady=(20,5))
-    txt_resultado = ctk.CTkTextbox(p_main, height=120, border_width=1)
-    txt_resultado.pack(fill='x', padx=5)
+    ctk.CTkLabel(f_right, text="Resultado / Conclusiones:", font=('Arial', 11, 'bold'), text_color="black").grid(row=4, column=0, sticky='w', padx=10, pady=(10,0))
+    txt_resultado = ctk.CTkTextbox(f_right, height=100, border_width=1)
+    txt_resultado.grid(row=5, column=0, sticky='ew', padx=10, pady=(0,20))
     list_bloqueables.append(txt_resultado)
     
     # Botonera

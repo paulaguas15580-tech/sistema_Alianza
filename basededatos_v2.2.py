@@ -3627,6 +3627,9 @@ def abrir_modulo_rehabilitacion():
     
     # Variables Cita
     v_fecha_cita = tk.StringVar()
+    
+    # Variable Total Deuda
+    v_total_deuda = tk.StringVar(value="$ 0.00")
 
     # Referencias a widgets para bloqueo
     list_bloqueables = []
@@ -3711,6 +3714,16 @@ def abrir_modulo_rehabilitacion():
             v_val_cob.set(f"{res[10]:g}" if res[10] else "")
             v_desc_cob.set(res[11] or "")
             
+            # Recalcular total al cargar
+            # Necesitamos definir la lógica de cálculo antes de llamarla o llamarla después
+            # Como load está antes de la definición UI/funciones locales, diferimos o ejecutamos lógica simple aquí.
+            try:
+                t = 0.0
+                for val in [res[4], res[6], res[8], res[10]]:
+                    if val: t += float(val)
+                v_total_deuda.set(f"$ {t:,.2f}")
+            except: v_total_deuda.set("$ 0.00")
+            
             # Load Cita
             v_fecha_cita.set(res[12] or "")
             txt_informe_cita.insert("1.0", res[13] or "")
@@ -3718,6 +3731,7 @@ def abrir_modulo_rehabilitacion():
             var_f_inicio.set("")
             var_finalizado.set(0)
             for v in [v_val_emp, v_desc_emp, v_val_ban, v_desc_ban, v_val_coop, v_desc_coop, v_val_cob, v_desc_cob]: v.set("")
+            v_total_deuda.set("$ 0.00")
             v_fecha_cita.set("")
             
         # 2. Load Client Data for Summary
@@ -4131,6 +4145,55 @@ def abrir_modulo_rehabilitacion():
     ctk.CTkLabel(h_row, text="Valor ($)", width=80, font=('Arial', 10, 'bold')).pack(side='left', padx=5)
     ctk.CTkLabel(h_row, text="Descripción", font=('Arial', 10, 'bold')).pack(side='left', padx=5)
 
+    # --- Lógica Local de Cálculo y Formato ---
+    def saltar_campo(event):
+        event.widget.tk_focusNext().focus()
+        return "break"
+
+    def limpiar_moneda(texto):
+        return texto.replace("$", "").replace(",", "").strip()
+
+    def formatear_moneda(valor):
+        try:
+            return f"$ {float(valor):,.2f}"
+        except:
+            return ""
+
+    def calcular_total_deuda(*args):
+        total = 0.0
+        # Lista de variables de valor
+        vals = [v_val_emp.get(), v_val_ban.get(), v_val_coop.get(), v_val_cob.get()]
+        for v in vals:
+            try:
+                clean = limpiar_moneda(v)
+                if clean:
+                    total += float(clean)
+            except: pass
+        v_total_deuda.set(f"$ {total:,.2f}")
+
+    def on_focus_in_moneda(event):
+        try:
+            texto = event.widget.get()
+            clean = limpiar_moneda(texto)
+            if clean:
+                event.widget.delete(0, tk.END)
+                event.widget.insert(0, clean)
+        except: pass
+
+    def on_focus_out_moneda(event):
+        try:
+            texto = event.widget.get()
+            clean = limpiar_moneda(texto)
+            if clean:
+                fmt = formatear_moneda(clean)
+                event.widget.delete(0, tk.END)
+                event.widget.insert(0, fmt)
+            calcular_total_deuda() # Recalcular al salir
+        except: pass
+        
+    def on_key_release_moneda(event):
+        calcular_total_deuda()
+
     def add_debt_row(parent, label, v_val, v_desc):
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill='x', padx=10, pady=5)
@@ -4140,8 +4203,15 @@ def abrir_modulo_rehabilitacion():
         e_val = ctk.CTkEntry(row, textvariable=v_val, width=80, placeholder_text="$")
         e_val.pack(side='left', padx=5)
         
+        # Bindings
+        e_val.bind('<FocusIn>', on_focus_in_moneda)
+        e_val.bind('<FocusOut>', on_focus_out_moneda)
+        e_val.bind('<KeyRelease>', on_key_release_moneda)
+        e_val.bind('<Return>', saltar_campo)
+        
         e_desc = ctk.CTkEntry(row, textvariable=v_desc, width=200, placeholder_text="Detalle / Institución")
         e_desc.pack(side='left', fill='x', expand=True, padx=5)
+        e_desc.bind('<Return>', saltar_campo)
         
         list_bloqueables.append(e_val)
         list_bloqueables.append(e_desc)
@@ -4150,6 +4220,21 @@ def abrir_modulo_rehabilitacion():
     add_debt_row(f_left, "Bancos", v_val_ban, v_desc_ban)
     add_debt_row(f_left, "Cooperativas", v_val_coop, v_desc_coop)
     add_debt_row(f_left, "Emp. Cobranza", v_val_cob, v_desc_cob)
+    
+    # --- TOTAL DEUDA ---
+    f_tot = ctk.CTkFrame(f_left, fg_color="transparent")
+    f_tot.pack(fill='x', padx=10, pady=(5,10))
+    
+    # Separator line (simulated)
+    ctk.CTkFrame(f_tot, height=2, fg_color="grey").pack(fill='x', pady=(0,5))
+    
+    row_t = ctk.CTkFrame(f_tot, fg_color="transparent")
+    row_t.pack(fill='x')
+    
+    ctk.CTkLabel(row_t, text="TOTAL DEUDA:", font=('Arial', 12, 'bold'), text_color="black", anchor='e', width=120).pack(side='left')
+    
+    e_total_deuda = ctk.CTkEntry(row_t, textvariable=v_total_deuda, state='readonly', width=120, font=('Arial', 12, 'bold'), fg_color="#E8F8F5", text_color="#145A32", border_color="#A2D9CE")
+    e_total_deuda.pack(side='left', padx=5)
     
     # --- SECCIÓN AGENDAMIENTO / CITA ---
     ctk.CTkLabel(f_left, text="AGENDAMIENTO / CITA", font=('Arial', 12, 'bold'), text_color="#1860C3").pack(pady=(20,5))
@@ -4200,16 +4285,16 @@ def abrir_modulo_rehabilitacion():
     txt_resultado.grid(row=5, column=0, sticky='ew', padx=10, pady=(0,20))
     list_bloqueables.append(txt_resultado)
     
-    # Botonera
-    btn_box = ctk.CTkFrame(tab_p, fg_color="transparent")
-    btn_box.pack(fill='x', pady=10)
+    # Botonera de Acciones (Restaurada)
+    f_btn_proceso = ctk.CTkFrame(p_main, fg_color="transparent")
+    f_btn_proceso.grid(row=1, column=0, columnspan=2, sticky='ew', pady=20, padx=10)
     
-    btn_save = ctk.CTkButton(btn_box, text="💾 GUARDAR CAMBIOS", command=save_rehab_data, fg_color="#1860C3")
-    btn_save.pack(side='left', padx=10)
+    btn_save = ctk.CTkButton(f_btn_proceso, text="💾 GUARDAR CAMBIOS", command=save_rehab_data, fg_color="#1860C3")
+    btn_save.pack(side='left')
     list_bloqueables.append(btn_save)
     
-    btn_finalizar = ctk.CTkButton(btn_box, text="✅ FINALIZAR PROCESO", command=toggle_finalizar)
-    btn_finalizar.pack(side='right', padx=10)
+    btn_finalizar = ctk.CTkButton(f_btn_proceso, text="✅ FINALIZAR PROCESO", command=toggle_finalizar, fg_color="#28a745")
+    btn_finalizar.pack(side='right')
 
     update_lock_ui()
 

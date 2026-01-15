@@ -4299,8 +4299,239 @@ def abrir_modulo_rehabilitacion():
     update_lock_ui()
 
 def abrir_modulo_intermediacion():
-    win, frame, nb = crear_modulo_generico("Módulo de Intermediación")
-    ctk.CTkLabel(frame, text="Contenido específico de Intermediación aquí...", text_color="grey", font=("Arial", 12)).pack(pady=50)
+    # Variables locales
+    var_cedula = tk.StringVar()
+    
+    # --- FUNCIONES DE SOPORTE ---
+    def ver_llamadas():
+        ced = var_cedula.get()
+        if not ced: return
+        
+        conn, cursor = conectar_db()
+        cursor.execute("SELECT * FROM Microcreditos WHERE cedula_cliente = %s ORDER BY id DESC LIMIT 1", (ced,))
+        data = cursor.fetchone()
+        db_manager.release_connection(conn)
+        
+        if not data:
+            messagebox.showinfo("Llamadas", "No hay registros de Microcrédito para este cliente.")
+            return
+
+        top = ctk.CTkToplevel(win)
+        top.title(f"Historial de Llamadas - {ced}")
+        top.geometry("1000x600")
+        
+        top.lift()
+        top.focus_force()
+        top.grab_set()
+        top.attributes('-topmost', True)
+        
+        main_scroll = ctk.CTkScrollableFrame(top, fg_color="white")
+        main_scroll.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        col1 = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        col1.pack(side='left', fill='both', expand=True, padx=5)
+        
+        col2 = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        col2.pack(side='left', fill='both', expand=True, padx=5)
+        
+        def crear_bloque_referencia(parent, title, vals, prefix):
+            f = ctk.CTkFrame(parent, fg_color="#F0F0F0", border_width=1, border_color="grey")
+            f.pack(fill='x', pady=5, padx=5)
+            ctk.CTkLabel(f, text=title, font=('Arial', 12, 'bold'), text_color="#1860C3").pack(pady=5)
+            
+            def add_row(lbl, val):
+                row = ctk.CTkFrame(f, fg_color="transparent")
+                row.pack(fill='x', padx=5, pady=2)
+                ctk.CTkLabel(row, text=lbl, width=100, anchor='w', text_color="black").pack(side='left')
+                e = ctk.CTkEntry(row, fg_color="white", text_color="black")
+                e.pack(side='left', fill='x', expand=True)
+                e.insert(0, str(val) if val else "")
+                e.configure(state='disabled')
+
+            add_row("Nombre Ref:", vals[0])
+            add_row("Teléfono:", vals[1])
+            add_row("Fecha:", vals[2])
+            add_row("Hora:", vals[3])
+            add_row("Relación:", vals[4])
+            add_row("Tiempo:", vals[5])
+            add_row("Dirección:", vals[6])
+            
+            row_viv = ctk.CTkFrame(f, fg_color="transparent")
+            row_viv.pack(fill='x', padx=5, pady=2)
+            ctk.CTkLabel(row_viv, text="Vivienda:", width=100, anchor='w', text_color="black").pack(side='left')
+            e_viv = ctk.CTkEntry(row_viv, fg_color="white", text_color="black")
+            e_viv.pack(side='left', fill='x', expand=True)
+            e_viv.insert(0, str(vals[7]) if vals[7] else "")
+            e_viv.configure(state='disabled')
+            
+            add_row("Cargas Fam:", vals[8])
+            
+            row_pat = ctk.CTkFrame(f, fg_color="transparent")
+            row_pat.pack(fill='x', padx=5, pady=5)
+            ctk.CTkLabel(row_pat, text="Patrimonio:", width=100, anchor='w', text_color="black").pack(side='left')
+            pat_str = str(vals[9]) if vals[9] else ""
+            pat_map = [("Vehiculo", "Vehículo"), ("Casa", "Casa"), ("Terreno", "Terreno"), ("Inversiones", "Inversiones")]
+            for keyword, label_text in pat_map:
+                chk = ctk.CTkCheckBox(row_pat, text=label_text, text_color="black")
+                if keyword in pat_str: chk.select()
+                chk.configure(state='disabled')
+                chk.pack(side='left', padx=2)
+                
+            row_resp = ctk.CTkFrame(f, fg_color="transparent")
+            row_resp.pack(fill='x', padx=5, pady=5)
+            chk_resp = ctk.CTkCheckBox(row_resp, text="¿Es Persona Responsable?", text_color="black")
+            if vals[10] == "Si" or vals[10] == "1": chk_resp.select()
+            chk_resp.configure(state='disabled')
+            chk_resp.pack(side='left', padx=30)
+
+        vals1 = [data[21], data[22], data[19], data[20], data[5], data[6], data[7], data[8], data[9], data[10], data[11]]
+        crear_bloque_referencia(col1, "Verificación Referencia 1", vals1, "r1")
+
+        vals2 = [data[25], data[26], data[23], data[24], data[12], data[13], data[14], data[15], data[16], data[17], data[18]]
+        crear_bloque_referencia(col2, "Verificación Referencia 2", vals2, "r2")
+
+    def ver_visitas():
+        ced = var_cedula.get()
+        if not ced: return
+        messagebox.showinfo("Visitas", f"Historial de visitas para {ced}")
+
+    def ver_buro():
+        ced = var_cedula.get()
+        if not ced: return
+        try:
+            conn, cursor = conectar_db()
+            cursor.execute("SELECT buro_archivo_ruta FROM Caja WHERE cedula = %s ORDER BY id DESC LIMIT 1", (ced,))
+            res = cursor.fetchone()
+            if res and res[0] and os.path.exists(res[0]):
+                os.startfile(res[0])
+            else:
+                messagebox.showwarning("Archivo", "No se encontró archivo de Buró.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error abriendo archivo: {e}")
+
+    def set_entry(entry, value):
+        entry.configure(state='normal')
+        entry.delete(0, tk.END)
+        entry.insert(0, str(value) if value is not None else "")
+        entry.configure(state='readonly')
+
+    def load_inter_data(cedula):
+        if not cedula:
+            limpiar_campos_inter()
+            return
+        
+        var_cedula.set(cedula)
+        
+        conn, cursor = conectar_db()
+        query = """
+            SELECT apertura, fecha_registro, valor_apertura, "fecha nacimiento", 
+                   estado_civil, cargas_familiares, telefono, email, tipo_vivienda, total_disponible, 
+                   terreno, valor_terreno, hipotecado, casa_dep, valor_casa_dep, hipotecado_casa_dep, 
+                   local, valor_local, hipotecado_local, 
+                   "cartera castigada", "valor cartera", "demanda judicial", "valor demanda", 
+                   "problemas justicia", "detalle justicia" 
+            FROM Clientes WHERE cedula = %s
+        """
+        cursor.execute(query, (cedula,))
+        res = cursor.fetchone()
+        db_manager.release_connection(conn)
+        
+        limpiar_campos_inter()
+        
+        if res:
+            # Llenar campos simples
+            set_entry(e_nap, res[0])
+            set_entry(e_fap, res[1])
+            set_entry(e_val, f"$ {res[2]:,.2f}" if res[2] else "$ 0.00")
+            
+            # Cálculo Edad
+            try:
+                fn_str = res[3]
+                if fn_str:
+                    fmt_ok = None
+                    for f in ["%d/%m/%Y", "%Y-%m-%d"]:
+                        try:
+                            fn_dt = datetime.datetime.strptime(fn_str, f)
+                            fmt_ok = fn_dt
+                            break
+                        except: pass
+                    
+                    if fmt_ok:
+                        hoy = datetime.datetime.now()
+                        edad = hoy.year - fmt_ok.year - ((hoy.month, hoy.day) < (fmt_ok.month, fmt_ok.day))
+                        set_entry(e_edad, f"{edad} Años")
+            except: pass
+            
+            set_entry(e_civ, res[4])
+            set_entry(e_car, res[5])
+            set_entry(e_tel, res[6])
+            set_entry(e_ema, res[7])
+            set_entry(e_viv, res[8])
+            set_entry(e_tot, f"$ {res[9]:,.2f}" if res[9] else "$ 0.00")
+            
+            # Patrimonio
+            pat_list = []
+            if res[10] == 1: pat_list.append(f"Terreno (${res[11] or 0:,.2f} / Hip:{'Si' if res[12] else 'No'})")
+            if res[13] == 1: pat_list.append(f"Casa (${res[14] or 0:,.2f} / Hip:{'Si' if res[15] else 'No'})")
+            if res[16] == 1: pat_list.append(f"Local (${res[17] or 0:,.2f} / Hip:{'Si' if res[18] else 'No'})")
+            set_entry(e_pat, ", ".join(pat_list) if pat_list else "Sin Patrimonio Registrado")
+            
+            # Legal
+            leg_list = []
+            if res[19] == 1: leg_list.append(f"Cartera (${res[20] or 0:,.2f})")
+            if res[21] == 1: leg_list.append(f"Demanda (${res[22] or 0:,.2f})")
+            if res[23] == 1: leg_list.append(f"Justicia ({res[24]})")
+            set_entry(e_leg, ", ".join(leg_list) if leg_list else "Sin Antecedentes")
+
+    def limpiar_campos_inter():
+        for e in [e_nap, e_fap, e_val, e_edad, e_civ, e_car, e_tel, e_ema, e_viv, e_tot, e_pat, e_leg]:
+            e.configure(state='normal')
+            e.delete(0, tk.END)
+            e.configure(state='readonly')
+
+    # --- CREACIÓN DE INTERFAZ ---
+    win, frame, nb = crear_modulo_generico("Módulo de Intermediación", search_callback=load_inter_data)
+
+    # 1. BOTONERA SUPERIOR
+    btn_f = ctk.CTkFrame(frame, fg_color="transparent") 
+    btn_f.pack(fill='x', pady=10)
+
+    ctk.CTkButton(btn_f, text="📞 Ver Llamadas", command=ver_llamadas, fg_color="#17a2b8", width=140).pack(side='left', padx=5) 
+    ctk.CTkButton(btn_f, text="🏠 Ver Visitas", command=ver_visitas, fg_color="#fd7e14", width=140).pack(side='left', padx=5) 
+    ctk.CTkButton(btn_f, text="📄 Ver Buró", command=ver_buro, fg_color="#3DCF96", width=140).pack(side='left', padx=5)
+
+    # 2. FRAME DE DATOS
+    data_f = ctk.CTkFrame(frame, fg_color="white", corner_radius=10) 
+    data_f.pack(fill='both', expand=True, padx=10, pady=10)
+
+    ctk.CTkLabel(data_f, text="DATOS FINANCIEROS Y LEGALES", text_color="#1860C3", font=('Arial', 12, 'bold')).grid(row=0, column=0, sticky='w', padx=20, pady=(15,10))
+
+    def mk_field(r, c, title, width=150): 
+        ctk.CTkLabel(data_f, text=title, text_color="black", font=('Arial', 10)).grid(row=r, column=c, sticky='w', padx=10, pady=(5,0)) 
+        e = ctk.CTkEntry(data_f, width=width, fg_color="#F9F9F9", text_color="black", state='readonly') 
+        e.grid(row=r+1, column=c, sticky='w', padx=10, pady=(0,10)) 
+        return e
+
+    e_nap = mk_field(1, 0, "N. Apertura")
+    e_fap = mk_field(1, 1, "F. Apertura")
+    e_val = mk_field(1, 2, "Valor Apertura")
+    e_edad = mk_field(1, 3, "Edad")
+
+    e_civ = mk_field(3, 0, "Estado Civil") 
+    e_car = mk_field(3, 1, "Cargas") 
+    e_tel = mk_field(3, 2, "Telef/Celular") 
+    e_ema = mk_field(3, 3, "Email", width=200)
+
+    e_viv = mk_field(5, 0, "Tipo Vivienda") 
+    e_tot = mk_field(5, 1, "Total Disponible $")
+
+    ctk.CTkLabel(data_f, text="Patrimonio:", text_color="black", font=('Arial', 10)).grid(row=7, column=0, sticky='w', padx=10, pady=(5,0)) 
+    e_pat = ctk.CTkEntry(data_f, fg_color="#F9F9F9", text_color="black", state='readonly') 
+    e_pat.grid(row=8, column=0, columnspan=4, sticky='ew', padx=10, pady=(0,10))
+
+    ctk.CTkLabel(data_f, text="Antecedentes Legales:", text_color="black", font=('Arial', 10)).grid(row=9, column=0, sticky='w', padx=10, pady=(5,0)) 
+    e_leg = ctk.CTkEntry(data_f, fg_color="#fee", text_color="#c00", state='readonly') 
+    e_leg.grid(row=10, column=0, columnspan=4, sticky='ew', padx=10, pady=(0,10))
 
 def abrir_modulo_consultas():
     # Variables de UI para mostrar el estado y la fecha

@@ -852,23 +852,38 @@ def accion_guardar():
             messagebox.showerror("Error", msg)
 
 def accion_actualizar():
-    if not ID_CLIENTE_SELECCIONADO: return
-    exito, msg = actualizar_cliente(ID_CLIENTE_SELECCIONADO, *obtener_campos_ui())
-    if exito:
+    global ID_CLIENTE_SELECCIONADO
+    print(f"DEBUG: Intentando actualizar. ID Seleccionado: {ID_CLIENTE_SELECCIONADO}")
+    
+    if not ID_CLIENTE_SELECCIONADO: 
         try:
-            top = e_cedula.winfo_toplevel()
-            messagebox.showinfo("Éxito", msg, parent=top)
-            mostrar_datos_tree()
-            top.lift()
-            top.focus_force()
-        except:
-            messagebox.showinfo("Éxito", msg)
-            mostrar_datos_tree()
-    else:
+             messagebox.showwarning("Atención", "No hay cliente seleccionado para actualizar.", parent=e_cedula.winfo_toplevel())
+        except: pass
+        return
+
+    try:
+        exito, msg = actualizar_cliente(ID_CLIENTE_SELECCIONADO, *obtener_campos_ui())
+        if exito:
+            try:
+                top = e_cedula.winfo_toplevel()
+                messagebox.showinfo("Éxito", msg, parent=top)
+                mostrar_datos_tree()
+                top.lift()
+                top.focus_force()
+            except:
+                messagebox.showinfo("Éxito", msg)
+                mostrar_datos_tree()
+        else:
+            try:
+                messagebox.showerror("Error", msg, parent=e_cedula.winfo_toplevel())
+            except:
+                messagebox.showerror("Error", msg)
+    except Exception as e:
+        print(f"CRITICAL ERROR call actualizar_cliente: {e}")
         try:
-            messagebox.showerror("Error", msg, parent=e_cedula.winfo_toplevel())
+            messagebox.showerror("Error Crítico", f"Falló la actualización: {e}", parent=e_cedula.winfo_toplevel())
         except:
-            messagebox.showerror("Error", msg)
+             messagebox.showerror("Error Crítico", f"Falló la actualización: {e}")
 
 def accion_eliminar():
     if not ID_CLIENTE_SELECCIONADO: return
@@ -942,32 +957,51 @@ def cargar_seleccion(event):
 
     ID_CLIENTE_SELECCIONADO = val['id']
     
+    # Limpieza general de campos registrados
     elementos = [e_cedula, e_ruc, e_nombre, e_cargas, e_email, e_telf, e_dir, e_parroquia, e_ref_vivienda,
                  e_profesion, e_ingresos, e_ref1, e_ref2, e_asesor, e_apertura, e_carpeta, e_nacimiento, 
-                 e_val_cartera, e_val_demanda, e_det_justicia, e_valor_terreno, e_valor_casa, e_valor_local]
-    for e in elementos: e.delete(0, tk.END)
+                 e_val_cartera, e_val_demanda, e_det_justicia, e_valor_terreno, e_valor_casa, e_valor_local,
+                 e_ingresos_2, e_score_buro, e_egresos] # Agregados faltantes para limpieza masiva inicial
+    
+    for e in elementos: 
+        try:
+            e.configure(state='normal')
+            e.delete(0, tk.END)
+            # Volver a readonly si fuera necesario (aquí asumimos normal por defecto para editar, 
+            # pero si alguno es readonly se debe manejar individualmente. 
+            # La mayoría son 'normal' en este form).
+        except: pass
+
     t_obs.delete("1.0", tk.END)
     
+    # Función helper para insertar seguro
+    def safe_insert(entry, value):
+        try:
+            entry.configure(state='normal')
+            entry.delete(0, tk.END)
+            entry.insert(0, str(value))
+        except: pass
+
     try:
-        e_cedula.insert(0, val['cedula'])
-        if val['ruc']: e_ruc.insert(0, val['ruc'])
-        e_nombre.insert(0, val['nombre'])
+        safe_insert(e_cedula, val['cedula'])
+        if val['ruc']: safe_insert(e_ruc, val['ruc'])
+        safe_insert(e_nombre, val['nombre'])
         if val['estado_civil']: c_civil.set(val['estado_civil'])
-        if val['cargas_familiares']: e_cargas.insert(0, val['cargas_familiares'])
-        if val['email']: e_email.insert(0, val['email'])
-        if val['telefono']: e_telf.insert(0, val['telefono'])
-        if val['direccion']: e_dir.insert(0, val['direccion'])
-        if val['parroquia']: e_parroquia.insert(0, val['parroquia'])
+        if val['cargas_familiares']: safe_insert(e_cargas, val['cargas_familiares'])
+        if val['email']: safe_insert(e_email, val['email'])
+        if val['telefono']: safe_insert(e_telf, val['telefono'])
+        if val['direccion']: safe_insert(e_dir, val['direccion'])
+        if val['parroquia']: safe_insert(e_parroquia, val['parroquia'])
         if val['tipo_vivienda']: c_vivienda.set(val['tipo_vivienda'])
-        if val['profesion']: e_profesion.insert(0, val['profesion'])
+        if val['profesion']: safe_insert(e_profesion, val['profesion'])
         
-        if val['ingresos_mensuales']: e_ingresos.insert(0, formatear_float_str(val['ingresos_mensuales']))
+        if val['ingresos_mensuales']: safe_insert(e_ingresos, formatear_float_str(val['ingresos_mensuales']))
         
         if 'fuente_ingreso' in val.keys() and val['fuente_ingreso']: c_fuente_ingreso.set(val['fuente_ingreso'])
             
-        if val['referencia1']: e_ref1.insert(0, val['referencia1'])
-        if val['referencia2']: e_ref2.insert(0, val['referencia2'])
-        if val['asesor']: e_asesor.insert(0, val['asesor'])
+        if val['referencia1']: safe_insert(e_ref1, val['referencia1'])
+        if val['referencia2']: safe_insert(e_ref2, val['referencia2'])
+        if val['asesor']: safe_insert(e_asesor, val['asesor'])
         
         # INTEGRACIÓN: Buscar fecha contrato en Caja
         fecha_mostrar = None
@@ -1018,13 +1052,13 @@ def cargar_seleccion(event):
                     
                     fecha_str = formato_encontrado if formato_encontrado else str(fecha_mostrar)
                 
-                e_apertura.insert(0, fecha_str)
+                safe_insert(e_apertura, fecha_str)
             except Exception as e_fmt:
                 print(f"Error formateando fecha: {e_fmt}")
-                e_apertura.insert(0, str(fecha_mostrar))
+                safe_insert(e_apertura, str(fecha_mostrar))
         
         try:
-            if val['apertura']: e_carpeta.insert(0, val['apertura'])
+            if val['apertura']: safe_insert(e_carpeta, val['apertura'])
         except: pass
         
         if 'fecha nacimiento' in val.keys() and val['fecha nacimiento']: 
@@ -1036,23 +1070,21 @@ def cargar_seleccion(event):
             e_nacimiento.insert(0, "dd/mm/aaaa")
             e_nacimiento.configure(text_color="#a9a9a9")
 
-            e_nacimiento.configure(text_color="#a9a9a9")
-
         if val['observaciones']: t_obs.insert("1.0", val['observaciones'])
         
         var_cartera.set(val['cartera castigada'])
-        if val['valor cartera']: e_val_cartera.insert(0, formatear_float_str(val['valor cartera']))
+        if val['valor cartera']: safe_insert(e_val_cartera, formatear_float_str(val['valor cartera']))
         
         var_demanda.set(val['demanda judicial'])
-        if val['valor demanda']: e_val_demanda.insert(0, formatear_float_str(val['valor demanda']))
+        if val['valor demanda']: safe_insert(e_val_demanda, formatear_float_str(val['valor demanda']))
         
         if val['problemas justicia']: var_justicia.set(val['problemas justicia'])
-        if val['detalle justicia']: e_det_justicia.insert(0, val['detalle justicia'])
+        if val['detalle justicia']: safe_insert(e_det_justicia, val['detalle justicia'])
         
         toggle_legal_fields()
 
         try:
-            if val['referencia_vivienda']: e_ref_vivienda.insert(0, val['referencia_vivienda'])
+            if val['referencia_vivienda']: safe_insert(e_ref_vivienda, val['referencia_vivienda'])
         except: pass
         
         try:
@@ -1060,7 +1092,7 @@ def cargar_seleccion(event):
         except: pass
         
         try:
-            if val['valor_terreno']: e_valor_terreno.insert(0, formatear_float_str(val['valor_terreno']))
+            if val['valor_terreno']: safe_insert(e_valor_terreno, formatear_float_str(val['valor_terreno']))
         except: pass
         
         try:
@@ -1072,7 +1104,7 @@ def cargar_seleccion(event):
         except: pass
         
         try:
-            if val['valor_casa_dep']: e_valor_casa.insert(0, formatear_float_str(val['valor_casa_dep']))
+            if val['valor_casa_dep']: safe_insert(e_valor_casa, formatear_float_str(val['valor_casa_dep']))
         except: pass
         
         try:
@@ -1082,24 +1114,24 @@ def cargar_seleccion(event):
         # Local Com: local (indice 35 aprox), valor_local (36), hipotecado_local (37)
         try:
             if val['local']: var_local.set(val['local'])
-            if val['valor_local']: e_valor_local.insert(0, formatear_float_str(val['valor_local']))
+            if val['valor_local']: safe_insert(e_valor_local, formatear_float_str(val['valor_local']))
             if val['hipotecado_local']: c_hip_local.set(val['hipotecado_local'])
         except: pass
         
         # Ingresos 2: ingresos_mensuales_2 (39), fuente_ingreso_2 (40)
         try:
-            if val['ingresos_mensuales_2']: e_ingresos_2.insert(0, formatear_float_str(val['ingresos_mensuales_2']))
+            if val['ingresos_mensuales_2']: safe_insert(e_ingresos_2, formatear_float_str(val['ingresos_mensuales_2']))
             if val['fuente_ingreso_2']: c_fuente_ingreso_2.set(val['fuente_ingreso_2'])
         except: pass
         
         # Score Buro: score_buro (41)
         try:
-            if val['score_buro']: e_score_buro.insert(0, str(val['score_buro']))
+            if val['score_buro']: safe_insert(e_score_buro, str(val['score_buro']))
         except: pass
         
         # Egresos: egresos (42)
         try:
-            if val['egresos']: e_egresos.insert(0, formatear_float_str(val['egresos']))
+            if val['egresos']: safe_insert(e_egresos, formatear_float_str(val['egresos']))
         except: pass
         
         # Actualizar total disponible (43)
@@ -2930,7 +2962,33 @@ def abrir_modulo_microcredito():
 
     var_sub_status = tk.StringVar(value="")
 
-    def create_sub_opt(parent, label_text, var_val, row_idx):
+    def actualizar_pestanas_status():
+        # Paso 1: Limpieza de Dinámicas
+        try: nb.delete("Desembolsado")
+        except: pass
+        try: nb.delete("Desistimiento")
+        except: pass
+        
+        estado = var_sub_status.get()
+        
+        # Paso 2: Creación Condicional
+        if estado == "Desembolsado":
+            nb.add("Desembolsado")
+            tab_d = nb.tab("Desembolsado")
+            nb.set("Desembolsado")
+            
+            ctk.CTkLabel(tab_d, text="DETALLE DE DESEMBOLSO", text_color="#1860C3", font=('Arial', 14, 'bold')).pack(pady=10)
+            # Agregar campos específicos si es necesario en el futuro
+            
+        elif estado == "Desistimiento":
+            nb.add("Desistimiento")
+            tab_rem = nb.tab("Desistimiento")
+            nb.set("Desistimiento")
+            
+            ctk.CTkLabel(tab_rem, text="MOTIVO DE DESISTIMIENTO", text_color="#d9534f", font=('Arial', 14, 'bold')).pack(pady=10)
+            # Agregar campos específicos si es necesario en el futuro
+
+    def create_sub_opt(parent, label_text, var_val, row_idx, cmd=None):
         ctk.CTkLabel(parent, text=label_text, text_color="black", font=('Arial', 11, 'bold')).grid(row=row_idx, column=0, sticky='w', padx=(20, 10), pady=5)
         
         f_in = ctk.CTkFrame(parent, fg_color="transparent")
@@ -2939,14 +2997,14 @@ def abrir_modulo_microcredito():
         e_f = ctk.CTkEntry(f_in, width=120, placeholder_text="DD/MM/YYYY")
         e_f.pack(side='left', padx=5)
         
-        rb = ctk.CTkRadioButton(f_in, text="", variable=var_sub_status, value=var_val, width=20)
+        rb = ctk.CTkRadioButton(f_in, text="", variable=var_sub_status, value=var_val, width=20, command=cmd)
         rb.pack(side='left', padx=5)
         return e_f
 
-    e_f_comite = create_sub_opt(f_sub_status, "Comité de Crédito:", "Comité de Crédito", 0)
-    e_f_desembolsado = create_sub_opt(f_sub_status, "Desembolsado:", "Desembolsado", 1)
-    e_f_negado_status = create_sub_opt(f_sub_status, "Negado:", "Negado", 2)
-    e_f_desistimiento = create_sub_opt(f_sub_status, "Desistimiento:", "Desistimiento", 3)
+    e_f_comite = create_sub_opt(f_sub_status, "Comité de Crédito:", "Comité de Crédito", 0, actualizar_pestanas_status)
+    e_f_negado_status = create_sub_opt(f_sub_status, "Negado:", "Negado", 1, actualizar_pestanas_status)
+    e_f_desembolsado = create_sub_opt(f_sub_status, "Desembolsado:", "Desembolsado", 2, actualizar_pestanas_status)
+    e_f_desistimiento = create_sub_opt(f_sub_status, "Desistimiento:", "Desistimiento", 3, actualizar_pestanas_status)
 
     ctk.CTkLabel(tab_status, text="Notas y Observaciones de Status:", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(anchor='w', pady=(10, 0))
     t_obs_micro = ctk.CTkTextbox(tab_status, height=200, width=600, fg_color="white", text_color="black", border_color="grey", border_width=1)
@@ -5168,6 +5226,9 @@ def abrir_modulo_caja():
         ruta_plantillas = os.path.join(base_dir, "Documento Plantilla")
         ruta_base_servidor = r"\\SERVIDOR\Compartida\Contratos_Finales"
         ruta_destino = os.path.join(ruta_base_servidor, ident)
+        
+        # Ruta Fallback Local
+        ruta_respaldo_local = os.path.join(base_dir, "Respaldo_PDF", ident)
 
         def fetch_resources(uri, rel):
             """Resuelve rutas de recursos para xhtml2pdf."""
@@ -5179,9 +5240,15 @@ def abrir_modulo_caja():
             if not os.path.exists(ruta_destino):
                 os.makedirs(ruta_destino)
         except Exception as e_red:
-            if not os.path.exists(ruta_destino):
-                os.makedirs(ruta_destino)
-            messagebox.showwarning("Modo Respaldo", f"El servidor no está disponible. Los archivos se guardarán localmente en:\n{ruta_destino}", parent=win.winfo_toplevel())
+            print(f"Alerta: Servidor no disponible ({e_red}). Usando respaldo local.")
+            ruta_destino = ruta_respaldo_local
+            try:
+                if not os.path.exists(ruta_destino):
+                    os.makedirs(ruta_destino)
+                messagebox.showwarning("Modo Respaldo", f"El servidor no está disponible. Los archivos se guardarán localmente en:\n{ruta_destino}", parent=win.winfo_toplevel())
+            except Exception as e_local:
+                messagebox.showerror("Error Crítico", f"No se pudo crear directorio ni en servidor ni localmente.\nError: {e_local}", parent=win.winfo_toplevel())
+                return
 
         # Fecha en Español
         meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]

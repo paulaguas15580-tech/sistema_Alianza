@@ -226,8 +226,22 @@ def crear_tablas():
                 chk_pat_2 INTEGER DEFAULT 0, val_pat_2 REAL DEFAULT 0,
                 chk_inmueble INTEGER DEFAULT 0, val_inmueble REAL DEFAULT 0,
                 chk_ruc INTEGER DEFAULT 0, val_ruc REAL DEFAULT 0,
-                chk_declaraciones INTEGER DEFAULT 0, val_declaraciones REAL DEFAULT 0,
-                chk_estados_cta INTEGER DEFAULT 0, val_estados_cta REAL DEFAULT 0,
+                chk_dis_temp INTEGER DEFAULT 0, val_dis_temp REAL DEFAULT 0, obs_dis_temp TEXT,
+                chk_dis_reg INTEGER DEFAULT 0, val_dis_reg REAL DEFAULT 0, obs_dis_reg TEXT,
+                chk_pat_1 INTEGER DEFAULT 0, val_pat_1 REAL DEFAULT 0, obs_pat_1 TEXT,
+                chk_pat_2 INTEGER DEFAULT 0, val_pat_2 REAL DEFAULT 0, obs_pat_2 TEXT,
+                chk_inmueble INTEGER DEFAULT 0, val_inmueble REAL DEFAULT 0, obs_inmueble TEXT,
+                chk_ruc INTEGER DEFAULT 0, val_ruc REAL DEFAULT 0, obs_ruc TEXT,
+                chk_declaraciones INTEGER DEFAULT 0, val_declaraciones REAL DEFAULT 0, obs_declaraciones TEXT,
+                chk_estados_cta INTEGER DEFAULT 0, val_estados_cta REAL DEFAULT 0, obs_estados_cta TEXT,
+                
+                fecha_cita TEXT, 
+                informe_cita TEXT,
+                
+                chk_precal INTEGER DEFAULT 0, desc_precal TEXT,
+                chk_aprob INTEGER DEFAULT 0, desc_aprob TEXT,
+                fecha_desembolso_inter TEXT,
+                chk_informe INTEGER DEFAULT 0, desc_informe TEXT,
                 
                 FOREIGN KEY (cedula_cliente) REFERENCES Clientes(cedula)
             )
@@ -488,6 +502,25 @@ def migrar_db():
             conn.commit()
         except Exception as e:
             print(f"Nota sobre índices: {e}")
+
+        # Migración Intermediacion Observaciones
+        cols_inter = get_column_names(cursor, 'Intermediacion_Detalles')
+        new_obs_cols = [
+            'obs_dis_temp', 'obs_dis_reg', 'obs_pat_1', 'obs_pat_2', 
+            'obs_inmueble', 'obs_ruc', 'obs_declaraciones', 'obs_estados_cta',
+            'fecha_cita', 'informe_cita',
+            'chk_precal', 'desc_precal',
+            'chk_aprob', 'desc_aprob',
+            'fecha_desembolso_inter',
+            'chk_informe', 'desc_informe'
+        ]
+        
+        if check_table_exists(cursor, 'Intermediacion_Detalles'):
+            for col in new_obs_cols:
+                if col not in cols_inter:
+                    print(f"Migrando DB: Agregando columna '{col}' a Intermediacion_Detalles...")
+                    cursor.execute(f"ALTER TABLE Intermediacion_Detalles ADD COLUMN {col} TEXT")
+            conn.commit()
 
         # Migración Usuario Admin -> Paul
         cursor.execute("SELECT id FROM Usuarios WHERE usuario='admin'")
@@ -4377,6 +4410,20 @@ def abrir_modulo_rehabilitacion():
 def abrir_modulo_intermediacion():
     # Variables locales
     var_cedula = tk.StringVar()
+    var_fecha_cita_inter = tk.StringVar()
+    
+    # Vars Proceso
+    var_fecha_desembolso_inter = tk.StringVar()
+    var_chk_precal = tk.IntVar()
+    var_chk_aprob = tk.IntVar()
+    var_chk_informe = tk.IntVar()
+    var_desc_precal = tk.StringVar()
+    var_desc_aprob = tk.StringVar()
+    var_desc_informe = tk.StringVar()
+    
+    # List of widgets to control security
+    # To be populated after widget creation
+    security_widgets = {} 
     
     # --- FUNCIONES DE SOPORTE ---\r
     def ver_llamadas():
@@ -4493,19 +4540,19 @@ def abrir_modulo_intermediacion():
 
     # --- LISTA DE ITEMS GESTIÓN ---
     items_gestion = [
-        ("Disolución Temporal", "chk_dis_temp", "val_dis_temp"),
-        ("Disolución Registrada", "chk_dis_reg", "val_dis_reg"),
-        ("Patrimonio 1", "chk_pat_1", "val_pat_1"),
-        ("Patrimonio 2", "chk_pat_2", "val_pat_2"),
-        ("Inmueble", "chk_inmueble", "val_inmueble"),
-        ("Ruc", "chk_ruc", "val_ruc"),
-        ("Declaraciones", "chk_declaraciones", "val_declaraciones"),
-        ("Estados de Cuenta", "chk_estados_cta", "val_estados_cta")
+        ("Disolución Temporal", "chk_dis_temp", "val_dis_temp", "obs_dis_temp"),
+        ("Disolución Registrada", "chk_dis_reg", "val_dis_reg", "obs_dis_reg"),
+        ("Patrimonio 1", "chk_pat_1", "val_pat_1", "obs_pat_1"),
+        ("Patrimonio 2", "chk_pat_2", "val_pat_2", "obs_pat_2"),
+        ("Inmueble", "chk_inmueble", "val_inmueble", "obs_inmueble"),
+        ("Ruc", "chk_ruc", "val_ruc", "obs_ruc"),
+        ("Declaraciones", "chk_declaraciones", "val_declaraciones", "obs_declaraciones"),
+        ("Estados de Cuenta", "chk_estados_cta", "val_estados_cta", "obs_estados_cta")
     ]
     
     # Listas para guardar referencias a widgets
-    widgets_gestion = [] # List of tuples: (checkbox, entry, key_chk, key_val)
-    lista_entries_gestion = [] # List of entry widgets for navigation
+    widgets_gestion = [] # List of tuples: (checkbox, entry, entry_obs, key_chk, key_val, key_obs)
+    lista_entries_gestion = [] # List of entry widgets for navigation (contains both vals and obs in order)
 
     def calcular_total_gestion(*args):
         total = 0.0
@@ -4524,30 +4571,33 @@ def abrir_modulo_intermediacion():
             e_total_gestion.configure(state='readonly')
         except: pass
 
-    def saltar_al_siguiente(event, index):
+    def saltar_al_siguiente(event, current_widget):
         try:
-            # First format current
+            # Format if it's a value entry
             on_focus_out_moneda(event)
-            # Then jump
-            if index + 1 < len(lista_entries_gestion):
-                next_entry = lista_entries_gestion[index + 1]
-                if next_entry.cget("state") == "normal": # Jump only if enabled
-                    next_entry.focus_set()
-                else: 
-                     # Try finding next enabled
-                     for j in range(index + 2, len(lista_entries_gestion)):
-                         if lista_entries_gestion[j].cget("state") == "normal":
-                             lista_entries_gestion[j].focus_set()
-                             break
+            
+            # Find current index
+            if current_widget in lista_entries_gestion:
+                idx = lista_entries_gestion.index(current_widget)
+                
+                # Try finding next enabled
+                for j in range(idx + 1, len(lista_entries_gestion)):
+                    if lista_entries_gestion[j].cget("state") == "normal":
+                        lista_entries_gestion[j].focus_set()
+                        return "break"
         except Exception as e: print(e)
+        return "break"
 
-    def toggle_entry_state(chk, ent):
+    def toggle_entry_state(chk, ent, ent_obs):
         if chk.get() == 1:
             ent.configure(state='normal')
+            ent_obs.configure(state='normal')
             ent.focus_set()
         else:
             ent.delete(0, tk.END)
+            ent_obs.delete(0, tk.END)
             ent.configure(state='disabled')
+            ent_obs.configure(state='disabled')
             calcular_total_gestion() # Recalc to 0
 
     def load_inter_data(cedula):
@@ -4631,23 +4681,62 @@ def abrir_modulo_intermediacion():
             # Mapear columnas a indices
             idx_map = {name: i for i, name in enumerate(col_names)}
             
-            for chk, ent, key_chk, key_val in widgets_gestion:
+            # Helper to safely get value
+            def get_val(col, var):
+                if col in idx_map:
+                    v = gestion[idx_map[col]]
+                    if v is not None: var.set(v)
+            
+            # Cargar Proceso
+            get_val('chk_precal', var_chk_precal)
+            get_val('desc_precal', var_desc_precal)
+            get_val('chk_aprob', var_chk_aprob)
+            get_val('desc_aprob', var_desc_aprob)
+            get_val('fecha_desembolso_inter', var_fecha_desembolso_inter)
+            get_val('chk_informe', var_chk_informe)
+            get_val('desc_informe', var_desc_informe)
+
+            # Trigger Toggle logic
+            toggle_fecha_desembolso()
+
+            # Trigger Security logic
+            aplicar_seguridad_proceso()
+
+            # Cargar Cita
+            if 'fecha_cita' in idx_map:
+                fc = gestion[idx_map['fecha_cita']]
+                if fc: var_fecha_cita_inter.set(fc)
+                
+            if 'informe_cita' in idx_map:
+                ic = gestion[idx_map['informe_cita']]
+                if ic:
+                    txt_informe_cita_inter.delete("1.0", tk.END)
+                    txt_informe_cita_inter.insert("1.0", ic)
+            
+            for chk, ent, ent_obs, key_chk, key_val, key_obs in widgets_gestion:
                 # Load Checkbox
                 if key_chk in idx_map:
                     val_c = gestion[idx_map[key_chk]]
                     if val_c == 1: 
                         chk.select()
                         ent.configure(state='normal') # Enable if checked
+                        ent_obs.configure(state='normal')
                     else: 
                         chk.deselect()
                         ent.configure(state='disabled') # Ensure disabled
+                        ent_obs.configure(state='disabled')
                 
-                # Load Value
-                if key_val in idx_map:
-                    val_v = gestion[idx_map[key_val]]
-                    if chk.get() == 1: # Only load text if checked
+                # Load Value and Observation
+                if chk.get() == 1: # Only load if checked
+                    if key_val in idx_map:
+                        val_v = gestion[idx_map[key_val]]
                         ent.delete(0, tk.END)
                         ent.insert(0, f"$ {val_v:,.2f}" if val_v else "")
+                    
+                    if key_obs in idx_map:
+                        val_o = gestion[idx_map[key_obs]]
+                        ent_obs.delete(0, tk.END)
+                        if val_o: ent_obs.insert(0, val_o)
                     
         # Calcular Total al cargar
         calcular_total_gestion()
@@ -4660,10 +4749,12 @@ def abrir_modulo_intermediacion():
             e.configure(state='readonly')
         
         # Gestión Fields
-        for chk, ent, _, _ in widgets_gestion:
+        for chk, ent, ent_obs, _, _, _ in widgets_gestion:
             chk.deselect()
             ent.delete(0, tk.END)
-            ent.configure(state='disabled') # Reset to disabled
+            ent_obs.delete(0, tk.END)
+            ent.configure(state='disabled')
+            ent_obs.configure(state='disabled')
 
         try:
             e_total_gestion.configure(state='normal')
@@ -4671,6 +4762,21 @@ def abrir_modulo_intermediacion():
             e_total_gestion.insert(0, "$ 0.00")
             e_total_gestion.configure(state='readonly')
         except: pass
+        
+        # Limpiar Cita y Proceso
+        var_fecha_cita_inter.set("")
+        try: txt_informe_cita_inter.delete("1.0", tk.END)
+        except: pass
+        
+        var_chk_precal.set(0)
+        var_desc_precal.set("")
+        var_chk_aprob.set(0)
+        var_desc_aprob.set("")
+        var_fecha_desembolso_inter.set("")
+        var_chk_informe.set(0)
+        var_desc_informe.set("")
+        toggle_fecha_desembolso()
+        aplicar_seguridad_proceso()
 
     def guardar_gestion():
         ced = var_cedula.get()
@@ -4688,15 +4794,33 @@ def abrir_modulo_intermediacion():
             cols = ["cedula_cliente"]
             vals = [ced]
             
-            for chk, ent, key_chk, key_val in widgets_gestion:
+            for chk, ent, ent_obs, key_chk, key_val, key_obs in widgets_gestion:
                 cols.append(key_chk)
                 chk_val = 1 if chk.get() == 1 else 0
                 vals.append(chk_val)
                 
                 cols.append(key_val)
                 raw_val = ent.get()
-                # Save 0.0 if not checked, else parsed value
                 vals.append(limpiar_moneda(raw_val) if chk_val == 1 and raw_val else 0.0)
+
+                cols.append(key_obs)
+                vals.append(ent_obs.get() if chk_val == 1 else "")
+            
+            # Save Cita fields
+            cols.append("fecha_cita")
+            vals.append(var_fecha_cita_inter.get())
+            
+            cols.append("informe_cita")
+            vals.append(txt_informe_cita_inter.get("1.0", tk.END).strip())
+            
+            # Save Proceso fields
+            cols.extend(["chk_precal", "desc_precal", "chk_aprob", "desc_aprob", "fecha_desembolso_inter", "chk_informe", "desc_informe"])
+            vals.extend([
+                var_chk_precal.get(), var_desc_precal.get(),
+                var_chk_aprob.get(), var_desc_aprob.get(),
+                var_fecha_desembolso_inter.get(),
+                var_chk_informe.get(), var_desc_informe.get()
+            ])
             
             if exists:
                 # UPDATE
@@ -4715,10 +4839,56 @@ def abrir_modulo_intermediacion():
             messagebox.showinfo("Éxito", "Gestión guardada correctamente.")
             registrar_auditoria("Guardar Intermediación", id_cliente=ced, detalles="Actualización de trámites y valores")
             
+            # Apply security after save
+            aplicar_seguridad_proceso()
+            
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar la gestión: {e}")
         finally:
             db_manager.release_connection(conn)
+
+    def aplicar_seguridad_proceso():
+        # Check if widgets exist
+        if not security_widgets: return
+
+        # Get Widgets
+        c_pre = security_widgets['chk_precal']
+        e_pre = security_widgets['desc_precal']
+        c_apr = security_widgets['chk_aprob']
+        e_apr = security_widgets['desc_aprob']
+        c_inf = security_widgets['chk_informe']
+        e_inf = security_widgets['desc_informe']
+        
+        # 1. Admin Access (NIVEL_ACCESO == 1)
+        if NIVEL_ACCESO == 1:
+            for w in [c_pre, e_pre, c_apr, e_apr, c_inf, e_inf]:
+                w.configure(state='normal')
+            return
+
+        # 2. User Access (Sequential Logic)
+        
+        # Default: Everything disabled except Step 1
+        for w in [c_pre, e_pre, c_apr, e_apr, c_inf, e_inf]:
+            w.configure(state='disabled')
+            
+        # Step 1: Precalificacion
+        # If not done, enable it. If done, lock it and check next.
+        if var_chk_precal.get() == 0:
+            c_pre.configure(state='normal')
+            e_pre.configure(state='normal')
+            # Rest remain disabled
+        else:
+            # Step 1 Done. Step 2: Aprobacion
+            if var_chk_aprob.get() == 0:
+                c_apr.configure(state='normal')
+                e_apr.configure(state='normal')
+            else:
+                # Step 2 Done. Step 3: Informe
+                if var_chk_informe.get() == 0:
+                    c_inf.configure(state='normal')
+                    e_inf.configure(state='normal')
+                else:
+                    pass # All done, all locked (except for Admin)
 
     # --- CREACIÓN DE INTERFAZ ---
     win, frame, nb = crear_modulo_generico("Módulo de Intermediación", search_callback=load_inter_data)
@@ -4773,59 +4943,166 @@ def abrir_modulo_intermediacion():
     nb.add("Gestión Intermediación")
     tab_inter = nb.tab("Gestión Intermediación")
     
-    # Grid config para centrar pero mantener arriba
+    # 2 Column Grid
     tab_inter.grid_columnconfigure(0, weight=1)
+    tab_inter.grid_columnconfigure(1, weight=1)
+    tab_inter.grid_rowconfigure(0, weight=1)
     
-    # Frame central
-    f_gest = ctk.CTkFrame(tab_inter, fg_color="white", corner_radius=10, border_width=1, border_color="#DDD")
-    f_gest.grid(row=0, column=0, pady=20, padx=20, sticky="n") # Sticky N para que se quede arriba
+    # --- FRAME IZQUIERDO: LISTA GESTIÓN ---
+    f_lista = ctk.CTkFrame(tab_inter, fg_color="white", corner_radius=10, border_width=1, border_color="#DDD")
+    f_lista.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
     
     # Encabezados
-    ctk.CTkLabel(f_gest, text="Selección", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=0, padx=10, pady=10)
-    ctk.CTkLabel(f_gest, text="Concepto / Trámite", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=1, padx=10, pady=10, sticky='w')
-    ctk.CTkLabel(f_gest, text="Valor ($)", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=2, padx=10, pady=10)
+    ctk.CTkLabel(f_lista, text="Selección", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=0, padx=5, pady=10)
+    ctk.CTkLabel(f_lista, text="Concepto", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=1, padx=5, pady=10, sticky='w')
+    ctk.CTkLabel(f_lista, text="Valor ($)", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=2, padx=5, pady=10)
+    ctk.CTkLabel(f_lista, text="Observaciones", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=3, padx=5, pady=10)
     
     # Separador
-    ttk.Separator(f_gest, orient='horizontal').grid(row=1, column=0, columnspan=3, sticky='ew', padx=5, pady=(0,10))
+    ttk.Separator(f_lista, orient='horizontal').grid(row=1, column=0, columnspan=4, sticky='ew', padx=5, pady=(0,10))
 
     # Generar Filas
-    for i, (label_text, key_chk, key_val) in enumerate(items_gestion):
+    for i, (label_text, key_chk, key_val, key_obs) in enumerate(items_gestion):
         r = i + 2
         
-        # DEFINIR ENTRY PRIMERO PARA USAR EN LAMBDA
-        ent = ctk.CTkEntry(f_gest, width=120, fg_color="#F9F9F9", text_color="black", justify="right", state="disabled")
+        # WIDGETS
+        ent = ctk.CTkEntry(f_lista, width=80, fg_color="#F9F9F9", text_color="black", justify="right", state="disabled") # Smaller width
+        ent_obs = ctk.CTkEntry(f_lista, width=150, fg_color="#F9F9F9", text_color="black", state="disabled") # Smaller width
+
+        chk = ctk.CTkCheckBox(f_lista, text="", width=24, checkbox_width=20, checkbox_height=20)
+        chk.configure(command=lambda c=chk, e=ent, eo=ent_obs: toggle_entry_state(c, e, eo))
         
-        chk = ctk.CTkCheckBox(f_gest, text="", width=24, checkbox_width=20, checkbox_height=20)
-        # BIND COMMAND CON LAMBDA SEGURO
-        chk.configure(command=lambda c=chk, e=ent: toggle_entry_state(c, e))
+        chk.grid(row=r, column=0, padx=5, pady=5)
         
-        chk.grid(row=r, column=0, padx=10, pady=5)
+        lbl = ctk.CTkLabel(f_lista, text=label_text, font=('Arial', 10), text_color="black") # Smaller font
+        lbl.grid(row=r, column=1, padx=5, pady=5, sticky='w')
         
-        lbl = ctk.CTkLabel(f_gest, text=label_text, font=('Arial', 11), text_color="black")
-        lbl.grid(row=r, column=1, padx=10, pady=5, sticky='w')
-        
-        ent.grid(row=r, column=2, padx=10, pady=5)
+        ent.grid(row=r, column=2, padx=5, pady=5)
+        ent_obs.grid(row=r, column=3, padx=5, pady=5)
         
         # Bindings
         ent.bind("<FocusOut>", lambda e: [on_focus_out_moneda(e), calcular_total_gestion()])
         ent.bind("<FocusIn>", on_focus_in_moneda)
         ent.bind("<KeyRelease>", lambda e: calcular_total_gestion())
-        ent.bind("<Return>", lambda e, idx=i: saltar_al_siguiente(e, idx))
+        ent.bind("<Return>", lambda e, w=ent: saltar_al_siguiente(e, w))
+        ent_obs.bind("<Return>", lambda e, w=ent_obs: saltar_al_siguiente(e, w))
         
-        widgets_gestion.append((chk, ent, key_chk, key_val))
+        widgets_gestion.append((chk, ent, ent_obs, key_chk, key_val, key_obs))
         lista_entries_gestion.append(ent)
+        lista_entries_gestion.append(ent_obs)
         
     last_row = len(items_gestion) + 2
-    ttk.Separator(f_gest, orient='horizontal').grid(row=last_row, column=0, columnspan=3, sticky='ew', padx=5, pady=10)
+    ttk.Separator(f_lista, orient='horizontal').grid(row=last_row, column=0, columnspan=4, sticky='ew', padx=5, pady=10)
     
     # ROW TOTAL
-    ctk.CTkLabel(f_gest, text="TOTAL GESTIÓN:", font=('Arial', 12, 'bold'), text_color="#1860C3").grid(row=last_row+1, column=1, sticky='e', padx=10, pady=10)
-    e_total_gestion = ctk.CTkEntry(f_gest, width=120, fg_color="#E0F2F1", text_color="#00695C", font=('Arial', 12, 'bold'), justify="right", state='readonly')
-    e_total_gestion.grid(row=last_row+1, column=2, padx=10, pady=10)
+    ctk.CTkLabel(f_lista, text="TOTAL:", font=('Arial', 12, 'bold'), text_color="#1860C3").grid(row=last_row+1, column=2, sticky='e', padx=5, pady=10)
+    e_total_gestion = ctk.CTkEntry(f_lista, width=100, fg_color="#E0F2F1", text_color="#00695C", font=('Arial', 12, 'bold'), justify="right", state='readonly')
+    e_total_gestion.grid(row=last_row+1, column=3, padx=5, pady=10, sticky='w')
+
+    # --- FRAME DERECHO: AGENDAMIENTO / CITA ---
+    f_cita = ctk.CTkFrame(tab_inter, fg_color="#EBF5FB", corner_radius=10, border_width=1, border_color="#AED6F1")
+    f_cita.grid(row=0, column=1, sticky='nsew', padx=10, pady=10)
+    
+    ctk.CTkLabel(f_cita, text="AGENDAMIENTO / CITA", font=('Arial', 14, 'bold'), text_color="#1860C3").pack(pady=20)
+    
+    # Fecha Cita
+    f_date = ctk.CTkFrame(f_cita, fg_color="transparent")
+    f_date.pack(fill='x', padx=20, pady=10)
+    
+    ctk.CTkLabel(f_date, text="Fecha Cita:", font=('Arial', 11, 'bold'), text_color="black").pack(side='left', padx=(0,10))
+    e_fecha_cita_inter = ctk.CTkEntry(f_date, textvariable=var_fecha_cita_inter, width=120, placeholder_text="DD/MM/YYYY")
+    e_fecha_cita_inter.pack(side='left', padx=5)
+    
+    def set_hoy_inter():
+        var_fecha_cita_inter.set(datetime.datetime.now().strftime("%d/%m/%Y"))
         
-    # Botón Guardar
-    ctk.CTkButton(f_gest, text="💾 Guardar Gestión", command=guardar_gestion, 
-                  fg_color="#28a745", hover_color="#218838", font=('Arial', 12, 'bold'), height=35).grid(row=last_row+2, column=0, columnspan=3, pady=20, padx=20, sticky='ew')
+    ctk.CTkButton(f_date, text="📅 Hoy", width=60, command=set_hoy_inter, fg_color="#28a745", hover_color="#218838").pack(side='left', padx=10)
+    
+    # Informe Cita
+    ctk.CTkLabel(f_cita, text="Informe Cita (Resultado Presencial):", font=('Arial', 11, 'bold'), text_color="black", anchor='w').pack(fill='x', padx=20, pady=(20,5))
+    txt_informe_cita_inter = ctk.CTkTextbox(f_cita, height=200, border_width=1)
+    txt_informe_cita_inter.pack(fill='x', padx=20, pady=5)
+        
+    # Botón Guardar GLOBAL
+    # Lo ponemos en un frame abajo que ocupe todo el ancho
+    f_btns = ctk.CTkFrame(tab_inter, fg_color="transparent")
+    f_btns.grid(row=1, column=0, columnspan=2, sticky='ew', pady=10, padx=10)
+    
+    ctk.CTkButton(f_btns, text="💾 GUARDAR GESTIÓN Y CITA", command=guardar_gestion, 
+                  fg_color="#28a745", hover_color="#218838", font=('Arial', 12, 'bold'), height=40).pack(fill='x')
+                  
+    # --- TAB 3: PROCESO (STATUS) ---
+    nb.add("Proceso")
+    tab_proc = nb.tab("Proceso")
+    
+    f_proc_center = ctk.CTkFrame(tab_proc, fg_color="white", corner_radius=10)
+    f_proc_center.pack(pady=40, padx=40, fill='x')
+    
+    # Configure Grid
+    f_proc_center.grid_columnconfigure(0, weight=0) # Check
+    f_proc_center.grid_columnconfigure(1, weight=0) # Label
+    f_proc_center.grid_columnconfigure(2, weight=1) # Entry
+    
+    # Row 0: Precalificación
+    w_chk_pre = ctk.CTkCheckBox(f_proc_center, text="", variable=var_chk_precal, width=24)
+    w_chk_pre.grid(row=0, column=0, padx=10, pady=15)
+    ctk.CTkLabel(f_proc_center, text="Precalificación", font=('Arial', 12, 'bold')).grid(row=0, column=1, padx=10, pady=15, sticky='w')
+    w_desc_pre = ctk.CTkEntry(f_proc_center, textvariable=var_desc_precal, placeholder_text="Descripción...")
+    w_desc_pre.grid(row=0, column=2, padx=10, pady=15, sticky='ew')
+    
+    # Row 1: Aprobación
+    w_chk_apr = ctk.CTkCheckBox(f_proc_center, text="", variable=var_chk_aprob, width=24)
+    w_chk_apr.grid(row=1, column=0, padx=10, pady=15)
+    ctk.CTkLabel(f_proc_center, text="Aprobación", font=('Arial', 12, 'bold')).grid(row=1, column=1, padx=10, pady=15, sticky='w')
+    w_desc_apr = ctk.CTkEntry(f_proc_center, textvariable=var_desc_aprob, placeholder_text="Descripción...")
+    w_desc_apr.grid(row=1, column=2, padx=10, pady=15, sticky='ew')
+    
+    # Row 2: Fecha Desembolso (Hidden initially)
+    # Use helper widgets list to toggle visibility
+    lbl_desembolso = ctk.CTkLabel(f_proc_center, text="Fecha Desembolso:", font=('Arial', 12, 'bold'), text_color="#1860C3")
+    
+    f_fechad = ctk.CTkFrame(f_proc_center, fg_color="transparent")
+    e_fechad = ctk.CTkEntry(f_fechad, textvariable=var_fecha_desembolso_inter, width=120, placeholder_text="DD/MM/YYYY")
+    e_fechad.pack(side='left', padx=5)
+    
+    def set_hoy_desembolso():
+        var_fecha_desembolso_inter.set(datetime.datetime.now().strftime("%d/%m/%Y"))
+    
+    btn_hoy_d = ctk.CTkButton(f_fechad, text="Hoy", width=50, command=set_hoy_desembolso, fg_color="#28a745")
+    btn_hoy_d.pack(side='left', padx=5)
+    
+    # Row 3: Informe
+    w_chk_inf = ctk.CTkCheckBox(f_proc_center, text="", variable=var_chk_informe, width=24)
+    w_chk_inf.grid(row=3, column=0, padx=10, pady=15)
+    ctk.CTkLabel(f_proc_center, text="Informe", font=('Arial', 12, 'bold')).grid(row=3, column=1, padx=10, pady=15, sticky='w')
+    w_desc_inf = ctk.CTkEntry(f_proc_center, textvariable=var_desc_informe, placeholder_text="Descripción...")
+    w_desc_inf.grid(row=3, column=2, padx=10, pady=15, sticky='ew')
+    
+    # Conditional Logic
+    def toggle_fecha_desembolso():
+        if var_chk_aprob.get() == 1:
+            lbl_desembolso.grid(row=2, column=1, padx=10, pady=15, sticky='w')
+            f_fechad.grid(row=2, column=2, padx=10, pady=15, sticky='w')
+        else:
+            lbl_desembolso.grid_remove()
+            f_fechad.grid_remove()
+            var_fecha_desembolso_inter.set("") # Clear if unchecked
+            
+    w_chk_apr.configure(command=toggle_fecha_desembolso)
+    
+    # Register widgets for security
+    security_widgets['chk_precal'] = w_chk_pre
+    security_widgets['desc_precal'] = w_desc_pre
+    security_widgets['chk_aprob'] = w_chk_apr
+    security_widgets['desc_aprob'] = w_desc_apr
+    security_widgets['chk_informe'] = w_chk_inf
+    security_widgets['desc_informe'] = w_desc_inf
+    
+    # Init state
+    toggle_fecha_desembolso()
+    
+    ctk.CTkButton(tab_proc, text="💾 GUARDAR PROCESO", command=guardar_gestion, 
+                  fg_color="#28a745", font=('Arial', 12, 'bold'), width=200).pack(pady=20)
 
 def abrir_modulo_consultas():
     # Variables de UI para mostrar el estado y la fecha

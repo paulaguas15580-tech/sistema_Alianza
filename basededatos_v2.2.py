@@ -215,6 +215,24 @@ def crear_tablas():
             )
         """)
 
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS Intermediacion_Detalles (
+                id {sql_type("SERIAL PRIMARY KEY")},
+                cedula_cliente TEXT UNIQUE NOT NULL,
+                
+                chk_dis_temp INTEGER DEFAULT 0, val_dis_temp REAL DEFAULT 0,
+                chk_dis_reg INTEGER DEFAULT 0, val_dis_reg REAL DEFAULT 0,
+                chk_pat_1 INTEGER DEFAULT 0, val_pat_1 REAL DEFAULT 0,
+                chk_pat_2 INTEGER DEFAULT 0, val_pat_2 REAL DEFAULT 0,
+                chk_inmueble INTEGER DEFAULT 0, val_inmueble REAL DEFAULT 0,
+                chk_ruc INTEGER DEFAULT 0, val_ruc REAL DEFAULT 0,
+                chk_declaraciones INTEGER DEFAULT 0, val_declaraciones REAL DEFAULT 0,
+                chk_estados_cta INTEGER DEFAULT 0, val_estados_cta REAL DEFAULT 0,
+                
+                FOREIGN KEY (cedula_cliente) REFERENCES Clientes(cedula)
+            )
+        """)
+
         cursor.execute("SELECT COUNT(*) FROM Usuarios")
         if cursor.fetchone()[0] == 0:
             hash_admin = generar_hash('cyberpol2022') 
@@ -4360,7 +4378,7 @@ def abrir_modulo_intermediacion():
     # Variables locales
     var_cedula = tk.StringVar()
     
-    # --- FUNCIONES DE SOPORTE ---
+    # --- FUNCIONES DE SOPORTE ---\r
     def ver_llamadas():
         ced = var_cedula.get()
         if not ced: return
@@ -4473,6 +4491,65 @@ def abrir_modulo_intermediacion():
         entry.insert(0, str(value) if value is not None else "")
         entry.configure(state='readonly')
 
+    # --- LISTA DE ITEMS GESTIÓN ---
+    items_gestion = [
+        ("Disolución Temporal", "chk_dis_temp", "val_dis_temp"),
+        ("Disolución Registrada", "chk_dis_reg", "val_dis_reg"),
+        ("Patrimonio 1", "chk_pat_1", "val_pat_1"),
+        ("Patrimonio 2", "chk_pat_2", "val_pat_2"),
+        ("Inmueble", "chk_inmueble", "val_inmueble"),
+        ("Ruc", "chk_ruc", "val_ruc"),
+        ("Declaraciones", "chk_declaraciones", "val_declaraciones"),
+        ("Estados de Cuenta", "chk_estados_cta", "val_estados_cta")
+    ]
+    
+    # Listas para guardar referencias a widgets
+    widgets_gestion = [] # List of tuples: (checkbox, entry, key_chk, key_val)
+    lista_entries_gestion = [] # List of entry widgets for navigation
+
+    def calcular_total_gestion(*args):
+        total = 0.0
+        for e in lista_entries_gestion:
+            try:
+                val_str = e.get().replace('$', '').replace(',', '').strip()
+                if val_str:
+                    total += float(val_str)
+            except:
+                pass
+        
+        try:
+            e_total_gestion.configure(state='normal')
+            e_total_gestion.delete(0, tk.END)
+            e_total_gestion.insert(0, f"$ {total:,.2f}")
+            e_total_gestion.configure(state='readonly')
+        except: pass
+
+    def saltar_al_siguiente(event, index):
+        try:
+            # First format current
+            on_focus_out_moneda(event)
+            # Then jump
+            if index + 1 < len(lista_entries_gestion):
+                next_entry = lista_entries_gestion[index + 1]
+                if next_entry.cget("state") == "normal": # Jump only if enabled
+                    next_entry.focus_set()
+                else: 
+                     # Try finding next enabled
+                     for j in range(index + 2, len(lista_entries_gestion)):
+                         if lista_entries_gestion[j].cget("state") == "normal":
+                             lista_entries_gestion[j].focus_set()
+                             break
+        except Exception as e: print(e)
+
+    def toggle_entry_state(chk, ent):
+        if chk.get() == 1:
+            ent.configure(state='normal')
+            ent.focus_set()
+        else:
+            ent.delete(0, tk.END)
+            ent.configure(state='disabled')
+            calcular_total_gestion() # Recalc to 0
+
     def load_inter_data(cedula):
         if not cedula:
             limpiar_campos_inter()
@@ -4481,6 +4558,8 @@ def abrir_modulo_intermediacion():
         var_cedula.set(cedula)
         
         conn, cursor = conectar_db()
+        
+        # 1. Cargar Datos Generales (Read-Only)
         query = """
             SELECT apertura, fecha_registro, valor_apertura, "fecha nacimiento", 
                    estado_civil, cargas_familiares, telefono, email, tipo_vivienda, total_disponible, 
@@ -4492,6 +4571,12 @@ def abrir_modulo_intermediacion():
         """
         cursor.execute(query, (cedula,))
         res = cursor.fetchone()
+        
+        # 2. Cargar Gestión Intermediación
+        cursor.execute("SELECT * FROM Intermediacion_Detalles WHERE cedula_cliente = %s", (cedula,))
+        gestion = cursor.fetchone()
+        col_names = [desc[0] for desc in cursor.description] if gestion else []
+        
         db_manager.release_connection(conn)
         
         limpiar_campos_inter()
@@ -4541,11 +4626,99 @@ def abrir_modulo_intermediacion():
             if res[23] == 1: leg_list.append(f"Justicia ({res[24]})")
             set_entry(e_leg, ", ".join(leg_list) if leg_list else "Sin Antecedentes")
 
+        # Llenar Gestión
+        if gestion:
+            # Mapear columnas a indices
+            idx_map = {name: i for i, name in enumerate(col_names)}
+            
+            for chk, ent, key_chk, key_val in widgets_gestion:
+                # Load Checkbox
+                if key_chk in idx_map:
+                    val_c = gestion[idx_map[key_chk]]
+                    if val_c == 1: 
+                        chk.select()
+                        ent.configure(state='normal') # Enable if checked
+                    else: 
+                        chk.deselect()
+                        ent.configure(state='disabled') # Ensure disabled
+                
+                # Load Value
+                if key_val in idx_map:
+                    val_v = gestion[idx_map[key_val]]
+                    if chk.get() == 1: # Only load text if checked
+                        ent.delete(0, tk.END)
+                        ent.insert(0, f"$ {val_v:,.2f}" if val_v else "")
+                    
+        # Calcular Total al cargar
+        calcular_total_gestion()
+
     def limpiar_campos_inter():
+        # General Fields
         for e in [e_nap, e_fap, e_val, e_edad, e_civ, e_car, e_tel, e_ema, e_viv, e_tot, e_pat, e_leg]:
             e.configure(state='normal')
             e.delete(0, tk.END)
             e.configure(state='readonly')
+        
+        # Gestión Fields
+        for chk, ent, _, _ in widgets_gestion:
+            chk.deselect()
+            ent.delete(0, tk.END)
+            ent.configure(state='disabled') # Reset to disabled
+
+        try:
+            e_total_gestion.configure(state='normal')
+            e_total_gestion.delete(0, tk.END)
+            e_total_gestion.insert(0, "$ 0.00")
+            e_total_gestion.configure(state='readonly')
+        except: pass
+
+    def guardar_gestion():
+        ced = var_cedula.get()
+        if not ced:
+            messagebox.showwarning("Aviso", "Seleccione un cliente primero.")
+            return
+            
+        conn, cursor = conectar_db()
+        try:
+            # Check exist
+            cursor.execute("SELECT id FROM Intermediacion_Detalles WHERE cedula_cliente = %s", (ced,))
+            exists = cursor.fetchone()
+            
+            # Prepare data
+            cols = ["cedula_cliente"]
+            vals = [ced]
+            
+            for chk, ent, key_chk, key_val in widgets_gestion:
+                cols.append(key_chk)
+                chk_val = 1 if chk.get() == 1 else 0
+                vals.append(chk_val)
+                
+                cols.append(key_val)
+                raw_val = ent.get()
+                # Save 0.0 if not checked, else parsed value
+                vals.append(limpiar_moneda(raw_val) if chk_val == 1 and raw_val else 0.0)
+            
+            if exists:
+                # UPDATE
+                # Build SET clause dynamically skipping cedula_cliente
+                set_clause = ", ".join([f"{c}=%s" for c in cols[1:]])
+                query = f"UPDATE Intermediacion_Detalles SET {set_clause} WHERE id=%s"
+                cursor.execute(query, vals[1:] + [exists[0]]) 
+            else:
+                # INSERT
+                placeholders = ",".join(["%s"] * len(cols))
+                col_str = ",".join(cols)
+                query = f"INSERT INTO Intermediacion_Detalles ({col_str}) VALUES ({placeholders})"
+                cursor.execute(query, vals)
+                
+            conn.commit()
+            messagebox.showinfo("Éxito", "Gestión guardada correctamente.")
+            registrar_auditoria("Guardar Intermediación", id_cliente=ced, detalles="Actualización de trámites y valores")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo guardar la gestión: {e}")
+        finally:
+            db_manager.release_connection(conn)
 
     # --- CREACIÓN DE INTERFAZ ---
     win, frame, nb = crear_modulo_generico("Módulo de Intermediación", search_callback=load_inter_data)
@@ -4558,8 +4731,13 @@ def abrir_modulo_intermediacion():
     ctk.CTkButton(btn_f, text="🏠 Ver Visitas", command=ver_visitas, fg_color="#fd7e14", width=140).pack(side='left', padx=5) 
     ctk.CTkButton(btn_f, text="📄 Ver Buró", command=ver_buro, fg_color="#3DCF96", width=140).pack(side='left', padx=5)
 
-    # 2. FRAME DE DATOS
-    data_f = ctk.CTkFrame(frame, fg_color="white", corner_radius=10) 
+    # 2. PESTAÑAS DETALLE
+    # La función crear_modulo_generico ya creó 'nb' con tab ("General")
+    
+    # --- TAB 1: GENERAL (Datos cliente) ---
+    tab_gen = nb.tab("General")
+    
+    data_f = ctk.CTkFrame(tab_gen, fg_color="white", corner_radius=10) 
     data_f.pack(fill='both', expand=True, padx=10, pady=10)
 
     ctk.CTkLabel(data_f, text="DATOS FINANCIEROS Y LEGALES", text_color="#1860C3", font=('Arial', 12, 'bold')).grid(row=0, column=0, sticky='w', padx=20, pady=(15,10))
@@ -4590,6 +4768,64 @@ def abrir_modulo_intermediacion():
     ctk.CTkLabel(data_f, text="Antecedentes Legales:", text_color="black", font=('Arial', 10)).grid(row=9, column=0, sticky='w', padx=10, pady=(5,0)) 
     e_leg = ctk.CTkEntry(data_f, fg_color="#fee", text_color="#c00", state='readonly') 
     e_leg.grid(row=10, column=0, columnspan=4, sticky='ew', padx=10, pady=(0,10))
+
+    # --- TAB 2: GESTIÓN INTERMEDIACIÓN ---
+    nb.add("Gestión Intermediación")
+    tab_inter = nb.tab("Gestión Intermediación")
+    
+    # Grid config para centrar pero mantener arriba
+    tab_inter.grid_columnconfigure(0, weight=1)
+    
+    # Frame central
+    f_gest = ctk.CTkFrame(tab_inter, fg_color="white", corner_radius=10, border_width=1, border_color="#DDD")
+    f_gest.grid(row=0, column=0, pady=20, padx=20, sticky="n") # Sticky N para que se quede arriba
+    
+    # Encabezados
+    ctk.CTkLabel(f_gest, text="Selección", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=0, padx=10, pady=10)
+    ctk.CTkLabel(f_gest, text="Concepto / Trámite", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=1, padx=10, pady=10, sticky='w')
+    ctk.CTkLabel(f_gest, text="Valor ($)", font=('Arial', 11, 'bold'), text_color="black").grid(row=0, column=2, padx=10, pady=10)
+    
+    # Separador
+    ttk.Separator(f_gest, orient='horizontal').grid(row=1, column=0, columnspan=3, sticky='ew', padx=5, pady=(0,10))
+
+    # Generar Filas
+    for i, (label_text, key_chk, key_val) in enumerate(items_gestion):
+        r = i + 2
+        
+        # DEFINIR ENTRY PRIMERO PARA USAR EN LAMBDA
+        ent = ctk.CTkEntry(f_gest, width=120, fg_color="#F9F9F9", text_color="black", justify="right", state="disabled")
+        
+        chk = ctk.CTkCheckBox(f_gest, text="", width=24, checkbox_width=20, checkbox_height=20)
+        # BIND COMMAND CON LAMBDA SEGURO
+        chk.configure(command=lambda c=chk, e=ent: toggle_entry_state(c, e))
+        
+        chk.grid(row=r, column=0, padx=10, pady=5)
+        
+        lbl = ctk.CTkLabel(f_gest, text=label_text, font=('Arial', 11), text_color="black")
+        lbl.grid(row=r, column=1, padx=10, pady=5, sticky='w')
+        
+        ent.grid(row=r, column=2, padx=10, pady=5)
+        
+        # Bindings
+        ent.bind("<FocusOut>", lambda e: [on_focus_out_moneda(e), calcular_total_gestion()])
+        ent.bind("<FocusIn>", on_focus_in_moneda)
+        ent.bind("<KeyRelease>", lambda e: calcular_total_gestion())
+        ent.bind("<Return>", lambda e, idx=i: saltar_al_siguiente(e, idx))
+        
+        widgets_gestion.append((chk, ent, key_chk, key_val))
+        lista_entries_gestion.append(ent)
+        
+    last_row = len(items_gestion) + 2
+    ttk.Separator(f_gest, orient='horizontal').grid(row=last_row, column=0, columnspan=3, sticky='ew', padx=5, pady=10)
+    
+    # ROW TOTAL
+    ctk.CTkLabel(f_gest, text="TOTAL GESTIÓN:", font=('Arial', 12, 'bold'), text_color="#1860C3").grid(row=last_row+1, column=1, sticky='e', padx=10, pady=10)
+    e_total_gestion = ctk.CTkEntry(f_gest, width=120, fg_color="#E0F2F1", text_color="#00695C", font=('Arial', 12, 'bold'), justify="right", state='readonly')
+    e_total_gestion.grid(row=last_row+1, column=2, padx=10, pady=10)
+        
+    # Botón Guardar
+    ctk.CTkButton(f_gest, text="💾 Guardar Gestión", command=guardar_gestion, 
+                  fg_color="#28a745", hover_color="#218838", font=('Arial', 12, 'bold'), height=35).grid(row=last_row+2, column=0, columnspan=3, pady=20, padx=20, sticky='ew')
 
 def abrir_modulo_consultas():
     # Variables de UI para mostrar el estado y la fecha

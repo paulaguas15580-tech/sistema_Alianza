@@ -5973,6 +5973,14 @@ def abrir_modulo_caja():
     container_info = ctk.CTkFrame(frame_info, fg_color="white", corner_radius=15, border_width=1, border_color="#CCCCCC")
     container_info.pack(fill='both', expand=True, padx=20, pady=20)
     
+    # 0. BOTÓN PRINCIPAL RECAUDACIÓN (NUEVA UBICACIÓN)
+    f_info_actions = ctk.CTkFrame(container_info, fg_color="transparent")
+    f_info_actions.pack(pady=(20, 10))
+    
+    ctk.CTkButton(f_info_actions, text="💰 IR A RECAUDACIÓN / COBROS", command=abrir_ventana_recaudacion,
+                  font=('Arial', 16, 'bold'), height=50, width=300, 
+                  fg_color="#F39C12", hover_color="#D68910").pack()
+    
     grid_info = ctk.CTkFrame(container_info, fg_color="transparent")
     grid_info.pack(padx=20, pady=20)
     
@@ -6101,11 +6109,292 @@ def abrir_modulo_caja():
     
     btn_imprimir_con = ctk.CTkButton(btn_frame_con, text="🖨️ IMPRIMIR CONTRATO", command=imprimir_contrato, font=('Arial', 14, 'bold'), height=45, fg_color="#1860C3", state='disabled')
     btn_imprimir_con.pack(side='left', padx=10)
+    
+    # 3. Recaudacion: MOVIDO A PESTAÑA INFORMACIÓN
 
 
 def abrir_modulo_cartera():
     win, frame, nb = crear_modulo_generico("Módulo de Cartera")
     ctk.CTkLabel(frame, text="Contenido específico de Cartera aquí...", text_color="grey", font=("Arial", 12)).pack(pady=50)
+
+
+def abrir_ventana_recaudacion():
+    toplevel = ctk.CTkToplevel()
+    toplevel.title("Módulo de Recaudación - Pago de Cuotas")
+    toplevel.geometry("900x600")
+    toplevel.resizable(False, False)
+    
+    # 1. Forzar que la ventana esté siempre encima de las demás
+    toplevel.attributes('-topmost', True)
+    
+    # 2. Traer la ventana al frente inmediatamente y darle el foco
+    toplevel.lift()
+    toplevel.focus_force()
+    
+    # 3. Hacer que la ventana tome el control total (Modal)
+    toplevel.grab_set()
+    
+    # Variables Locales
+    var_cedula_busq = tk.StringVar()
+    var_nombre_cliente = tk.StringVar() # NEW: Para recibo
+    var_nro_cuota = tk.StringVar()
+    var_vencimiento = tk.StringVar()
+    var_capital = tk.DoubleVar()
+    var_interes = tk.DoubleVar()
+    var_dias_mora = tk.IntVar(value=0)
+    var_mora = tk.DoubleVar(value=0.0)
+    var_total_pagar = tk.DoubleVar(value=0.0)
+    var_recibido = tk.DoubleVar(value=0.0)
+    var_cambio = tk.DoubleVar(value=0.0)
+    var_estado_visual = tk.StringVar(value="ESPERANDO BÚSQUEDA")
+    
+    # --- UI LAYOUT ---
+    
+    # 1. PANEL SUPERIOR (BÚSQUEDA)
+    f_top = ctk.CTkFrame(toplevel, fg_color="white", height=80)
+    f_top.pack(fill='x', padx=10, pady=10)
+    
+    ctk.CTkLabel(f_top, text="Cédula Cliente:", font=('Arial', 12, 'bold')).pack(side='left', padx=20)
+    e_cedula_rec = ctk.CTkEntry(f_top, textvariable=var_cedula_busq, width=150, font=('Arial', 14))
+    e_cedula_rec.pack(side='left', padx=10)
+    
+    def buscar_credito_activo():
+        ced = var_cedula_busq.get().strip()
+        if not ced:
+            messagebox.showwarning("Aviso", "Ingrese una cédula")
+            return
+            
+        # --- SIMULACIÓN DE BÚSQUEDA ---
+        # Datos simulados: Vence hace 5 días
+        fake_vencimiento = (datetime.datetime.now() - datetime.timedelta(days=5)).date()
+        fake_capital = 150.00
+        fake_interes = 15.00
+        var_nombre_cliente.set("Cliente Simulado") # Simulación nombre
+        
+        var_nro_cuota.set("3 / 12")
+        var_vencimiento.set(fake_vencimiento.strftime("%Y-%m-%d"))
+        var_capital.set(fake_capital)
+        var_interes.set(fake_interes)
+        
+        # Calcular Mora
+        hoy = datetime.datetime.now().date()
+        delta = (hoy - fake_vencimiento).days
+        
+        dias = max(0, delta)
+        var_dias_mora.set(dias)
+        
+        # Lógica Penalidad: 1.1% por día sobre Saldo Capital
+        mora = round(fake_capital * 0.011 * dias, 2)
+        var_mora.set(mora)
+        
+        total = fake_capital + fake_interes + mora
+        var_total_pagar.set(round(total, 2))
+        
+        # Actualizar Estado Visual
+        if dias > 0:
+            var_estado_visual.set(f"ESTADO: MORA ({dias} DÍAS)")
+            lbl_estado.configure(text_color="#D32F2F", fg_color="#FFCDD2") # Red
+            e_total_pagar.configure(fg_color="#FFCDD2", text_color="#D32F2F")
+        else:
+            var_estado_visual.set("ESTADO: AL DÍA")
+            lbl_estado.configure(text_color="#388E3C", fg_color="#C8E6C9") # Green
+            e_total_pagar.configure(fg_color="#E0F2F1", text_color="#00695C")
+
+        # Set Focus Recibido
+        e_recibido.focus_set()
+        
+    def generar_recibo_pdf():
+        try:
+            # Datos recibo
+            nombre = var_nombre_cliente.get() or "Cliente Final"
+            cedula = var_cedula_busq.get()
+            cuota = var_nro_cuota.get()
+            valor_c = var_capital.get() + var_interes.get()
+            valor_m = var_mora.get()
+            total = var_total_pagar.get()
+            fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # HTML content
+            html_content = f"""
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Helvetica, sans-serif; font-size: 12px; }}
+                    .header {{ text-align: center; margin-bottom: 20px; }}
+                    .title {{ font-size: 16px; font-weight: bold; }}
+                    .info {{ margin-bottom: 5px; }}
+                    .total {{ font-size: 14px; font-weight: bold; margin-top: 10px; border-top: 1px dashed black; padding-top: 5px; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="title">COMPROBANTE DE PAGO</div>
+                    <div>ALIANZA C3F</div>
+                    <div>{fecha_hoy}</div>
+                </div>
+                
+                <div class="info"><strong>Cliente:</strong> {nombre}</div>
+                <div class="info"><strong>Cédula:</strong> {cedula}</div>
+                <div class="info"><strong>Concepto:</strong> Pago de Cuota {cuota}</div>
+                
+                <hr>
+                
+                <table style="width: 100%;">
+                    <tr>
+                        <td>Valor Cuota:</td>
+                        <td style="text-align: right;">$ {valor_c:.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>Mora / Multa:</td>
+                        <td style="text-align: right;">$ {valor_m:.2f}</td>
+                    </tr>
+                </table>
+                
+                <div class="total">
+                    <table style="width: 100%;">
+                        <tr>
+                            <td>TOTAL PAGADO:</td>
+                            <td style="text-align: right;">$ {total:.2f}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <br><br>
+                <div style="text-align: center;">__________________________<br>Firma Cajero</div>
+            </body>
+            </html>
+            """
+            
+            # Save file
+            carpeta = "Recibos"
+            if not os.path.exists(carpeta):
+                os.makedirs(carpeta)
+                
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"Recibo_{cedula}_{timestamp}.pdf"
+            path = os.path.abspath(os.path.join(carpeta, filename))
+            
+            with open(path, "w+b") as result_file:
+                pisa_status = pisa.CreatePDF(html_content, dest=result_file)
+                
+            if pisa_status.err:
+                messagebox.showerror("Error PDF", "Error generando PDF")
+            else:
+                os.startfile(path)
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error creando recibo: {e}")
+        
+    ctk.CTkButton(f_top, text="🔍 BUSCAR CRÉDITO ACTIVO", command=buscar_credito_activo,
+                  fg_color="#1860C3", width=200).pack(side='left', padx=20)
+                  
+    # 2. PANEL CONTENIDO (SPLIT)
+    f_content = ctk.CTkFrame(toplevel, fg_color="transparent")
+    f_content.pack(fill='both', expand=True, padx=10, pady=5)
+    
+    # LEFT PANEL (DETALLES)
+    f_left = ctk.CTkFrame(f_content, fg_color="white", width=400)
+    f_left.pack(side='left', fill='both', expand=True, padx=5)
+    
+    ctk.CTkLabel(f_left, text="DETALLE DE CUOTA", font=('Arial', 14, 'bold'), text_color="#555").pack(pady=15)
+    
+    # Grid detalles
+    f_grid_det = ctk.CTkFrame(f_left, fg_color="transparent")
+    f_grid_det.pack(pady=10, padx=20)
+    
+    ctk.CTkLabel(f_grid_det, text="Nro Cuota:", font=('Arial', 12)).grid(row=0, column=0, sticky='e', pady=5)
+    ctk.CTkEntry(f_grid_det, textvariable=var_nro_cuota, state='readonly', width=150).grid(row=0, column=1, padx=10, pady=5)
+    
+    ctk.CTkLabel(f_grid_det, text="Vencimiento:", font=('Arial', 12)).grid(row=1, column=0, sticky='e', pady=5)
+    ctk.CTkEntry(f_grid_det, textvariable=var_vencimiento, state='readonly', width=150).grid(row=1, column=1, padx=10, pady=5)
+    
+    ctk.CTkLabel(f_grid_det, text="Valor Capital ($):", font=('Arial', 12, 'bold')).grid(row=2, column=0, sticky='e', pady=5)
+    ctk.CTkEntry(f_grid_det, textvariable=var_capital, state='readonly', width=150, justify='right').grid(row=2, column=1, padx=10, pady=5)
+    
+    ctk.CTkLabel(f_grid_det, text="Valor Interés ($):", font=('Arial', 12, 'bold')).grid(row=3, column=0, sticky='e', pady=5)
+    ctk.CTkEntry(f_grid_det, textvariable=var_interes, state='readonly', width=150, justify='right').grid(row=3, column=1, padx=10, pady=5)
+    
+    # ESTADO VISUAL
+    lbl_estado = ctk.CTkLabel(f_left, textvariable=var_estado_visual, font=('Arial', 18, 'bold'), height=60, corner_radius=8)
+    lbl_estado.pack(fill='x', padx=20, pady=30)
+    
+    # RIGHT PANEL (CÁLCULOS Y PAGO)
+    f_right = ctk.CTkFrame(f_content, fg_color="#F4F6F7", width=400)
+    f_right.pack(side='left', fill='both', expand=True, padx=(5,0))
+    
+    ctk.CTkLabel(f_right, text="CÁLCULO Y PAGO", font=('Arial', 14, 'bold'), text_color="#555").pack(pady=15)
+    
+    f_grid_pag = ctk.CTkFrame(f_right, fg_color="transparent")
+    f_grid_pag.pack(pady=10, padx=20)
+    
+    # Dias Atraso
+    ctk.CTkLabel(f_grid_pag, text="Días Atraso:", font=('Arial', 12)).grid(row=0, column=0, sticky='e', pady=5)
+    ctk.CTkEntry(f_grid_pag, textvariable=var_dias_mora, state='readonly', width=80).grid(row=0, column=1, sticky='w', padx=10, pady=5)
+    
+    # Mora
+    ctk.CTkLabel(f_grid_pag, text="Mora / Penalidad ($):", font=('Arial', 12, 'bold'), text_color="#D32F2F").grid(row=1, column=0, sticky='e', pady=5)
+    ctk.CTkEntry(f_grid_pag, textvariable=var_mora, state='readonly', width=120, justify='right', fg_color="#FFEBEE", text_color="#D32F2F").grid(row=1, column=1, sticky='w', padx=10, pady=5)
+    ctk.CTkLabel(f_grid_pag, text="(1.1% diario s/Capital)", font=('Arial', 10), text_color="#777").grid(row=1, column=2, sticky='w')
+    
+    # Separator
+    ttk.Separator(f_grid_pag, orient='horizontal').grid(row=2, column=0, columnspan=3, sticky='ew', pady=10)
+    
+    # TOTAL A PAGAR
+    ctk.CTkLabel(f_grid_pag, text="TOTAL A PAGAR:", font=('Arial', 14, 'bold')).grid(row=3, column=0, sticky='e', pady=10)
+    e_total_pagar = ctk.CTkEntry(f_grid_pag, textvariable=var_total_pagar, font=('Arial', 16, 'bold'), width=140, justify='right', state='readonly')
+    e_total_pagar.grid(row=3, column=1, columnspan=2, sticky='w', padx=10, pady=10)
+    
+    # MONTO RECIBIDO
+    ctk.CTkLabel(f_grid_pag, text="Monto Recibido ($):", font=('Arial', 12, 'bold')).grid(row=4, column=0, sticky='e', pady=5)
+    
+    def calc_cambio(*args):
+        try:
+            tot = var_total_pagar.get()
+            rec = var_recibido.get()
+            cam = rec - tot
+            var_cambio.set(round(cam, 2))
+        except:
+            var_cambio.set(0.0)
+            
+    e_recibido = ctk.CTkEntry(f_grid_pag, textvariable=var_recibido, font=('Arial', 14), width=140, justify='right')
+    e_recibido.grid(row=4, column=1, columnspan=2, sticky='w', padx=10, pady=5)
+    e_recibido.bind("<KeyRelease>", lambda e: calc_cambio())
+    
+    # CAMBIO
+    ctk.CTkLabel(f_grid_pag, text="Cambio ($):", font=('Arial', 12, 'bold')).grid(row=5, column=0, sticky='e', pady=5)
+    ctk.CTkEntry(f_grid_pag, textvariable=var_cambio, font=('Arial', 14, 'bold'), width=140, justify='right', state='readonly', fg_color="#E8F5E9", text_color="green").grid(row=5, column=1, columnspan=2, sticky='w', padx=10, pady=5)
+    
+    # 3. BOTÓN ACCIÓN
+    def registrar_pago():
+        try:
+            # Validaciones básicas
+            rec = var_recibido.get()
+            tot = var_total_pagar.get()
+            if rec < tot:
+                messagebox.showwarning("Pago Insuficiente", "El monto recibido es menor al total.")
+                return
+                
+            # Simulación DB Update
+            messagebox.showinfo("Éxito", "Pago Registrado Correctamente.\n\nSimulación: Se actualizó la cuota y se ingresó dinero a Caja.")
+            
+            # Habilitar Imprimir Recibo
+            btn_imprimir_recibo.configure(state='normal', fg_color="#17a2b8")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al registrar pago: {e}")
+
+    f_btns = ctk.CTkFrame(toplevel, fg_color="transparent")
+    f_btns.pack(fill='x', padx=40, pady=20)
+
+    ctk.CTkButton(f_btns, text="✅ REGISTRAR PAGO", command=registrar_pago,
+                  font=('Arial', 14, 'bold'), height=50, width=300, fg_color="#28a745", hover_color="#218838").pack(side='left', padx=10, fill='x', expand=True)
+                  
+    btn_imprimir_recibo = ctk.CTkButton(f_btns, text="🖨️ IMPRIMIR RECIBO", command=generar_recibo_pdf,
+                                      font=('Arial', 14, 'bold'), height=50, width=200, fg_color="#6c757d", state='disabled')
+    btn_imprimir_recibo.pack(side='left', padx=10)
+                  
+    # Focus inicial
+    e_cedula_rec.focus_set()
 
 
 if __name__ == '__main__':

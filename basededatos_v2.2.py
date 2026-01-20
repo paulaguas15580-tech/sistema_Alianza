@@ -21,6 +21,54 @@ from io import BytesIO
 from db_manager import DatabaseManager
 import psycopg2.extras
 
+
+
+def verificar_integridad_db():
+    print('--- VERIFICANDO INTEGRIDAD DE BASE DE DATOS ---')
+    if not db_manager:
+        print("Error: db_manager no inicializado. Saltando verificación.")
+        return
+
+    try:
+        conn = db_manager.get_connection()
+        cursor = db_manager.get_cursor(conn)
+
+        nuevas_columnas = [
+            ("fecha_desembolso_real", "TEXT"),
+            ("monto_aprobado", "REAL"),
+            ("tasa_interes", "REAL"),
+            ("plazo_meses", "INTEGER"),
+            ("valor_cuota", "REAL"),
+            ("dia_pago", "INTEGER")
+        ]
+        
+        # Obtener columnas existentes (abstracted by db_manager)
+        try:
+            columnas_existentes = db_manager.get_column_names(cursor, "Microcreditos")
+        except Exception:
+            # Si falla, intentar crear la tabla (aunque crear_tablas ya deberia haber corrido)
+            # O simplemente asumir vacio
+            columnas_existentes = []
+
+        for col_nombre, col_tipo in nuevas_columnas:
+            if col_nombre not in columnas_existentes:
+                print(f"Reparando: Agregando columna faltante '{col_nombre}'...")
+                try:
+                    # ALTER TABLE es standard para ADD COLUMN
+                    cursor.execute(f"ALTER TABLE Microcreditos ADD COLUMN {col_nombre} {col_tipo}")
+                    print(f"Columna '{col_nombre}' agregada.")
+                except Exception as e:
+                    print(f"Info/Error al agregar {col_nombre}: {e}")
+            else:
+                print(f"Verificado: '{col_nombre}' ya existe.")
+
+        conn.commit()
+        db_manager.release_connection(conn)
+        print('--- VERIFICACIÓN COMPLETADA ---')
+    except Exception as e:
+        print(f"Error crítico en verificación DB: {e}")
+
+
 def generar_qr_base64(texto):
     qr = qrcode.QRCode(version=1, box_size=10, border=2)
     qr.add_data(texto)
@@ -192,6 +240,20 @@ def crear_tablas():
                 fecha TEXT,
                 observaciones TEXT,
                 FOREIGN KEY (cedula_cliente) REFERENCES Clientes(cedula)
+            )
+        """)
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS Pagos (
+                id {sql_type("SERIAL PRIMARY KEY")},
+                fecha TEXT,
+                cedula_cliente TEXT,
+                cuota_nro INTEGER,
+                valor_capital REAL,
+                valor_interes REAL,
+                valor_mora REAL,
+                total_pagado REAL,
+                usuario TEXT
             )
         """)
 
@@ -2530,6 +2592,8 @@ def abrir_modulo_microcredito():
     global e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just, e_info_score
     global t_obs_info_micro
     global f_sub_status, var_sub_status, e_f_comite, e_f_desembolsado, e_f_negado_status, e_f_desistimiento
+    global nb
+    global actualizar_pestanas_status
 
     cedula_micro_actual = None
     id_micro_actual = None
@@ -2537,7 +2601,157 @@ def abrir_modulo_microcredito():
     win_micro = ctk.CTkToplevel()
     win_micro.title("Módulo de Microcrédito")
     win_micro.geometry("1100x750")
+    win_micro.geometry("1100x750")
     win_micro.after(100, lambda: win_micro.state('zoomed'))
+
+    # --- POPUP DESEMBOLSO ---
+    def abrir_popup_desembolso():
+        if not id_micro_actual:
+            messagebox.showwarning("Aviso", "Primero GUARDE el registro del microcrédito antes de agregar los detalles financieros.")
+            return
+            
+        t = ctk.CTkToplevel(win_micro)
+        t.title("Detalles Financieros del Crédito")
+        t.geometry("500x450")
+        t.transient(win_micro)
+        
+        ctk.CTkLabel(t, text="DETALLES DE DESEMBOLSO", text_color="#1860C3", font=('Arial', 14, 'bold')).pack(pady=15)
+        
+        gf = ctk.CTkFrame(t, fg_color="transparent")
+        gf.pack(padx=20, pady=10)
+        
+        # Variables locales para el popup
+        vars_popup = {}
+        
+        def add_field(row, label, key):
+            ctk.CTkLabel(gf, text=label, font=('Arial', 11, 'bold')).grid(row=row, column=0, sticky='e', padx=10, pady=5)
+            e = ctk.CTkEntry(gf, width=150)
+            e.grid(row=row, column=1, sticky='w', padx=10, pady=5)
+            vars_popup[key] = e
+            return e
+
+        e_p_fecha = add_field(0, "Fecha Desembolso:", "fecha")
+        e_p_monto = add_field(1, "Monto Aprobado ($):", "monto")
+        e_p_tasa = add_field(2, "Tasa Interés (%):", "tasa")
+        e_p_plazo = add_field(3, "Plazo (Meses):", "plazo")
+        e_p_cuota = add_field(4, "Valor Cuota ($):", "cuota")
+        e_p_dia = add_field(5, "Día de Pago:", "dia")
+        
+        # Validadores y Formatos
+        e_p_monto.bind('<FocusOut>', on_focus_out_moneda)
+        e_p_monto.bind('<FocusIn>', on_focus_in_moneda)
+        
+        e_p_cuota.bind('<FocusOut>', on_focus_out_moneda)
+        e_p_cuota.bind('<FocusIn>', on_focus_in_moneda)
+        
+        def fmt_tasa_out_p(e):
+            try:
+                val = e.widget.get().replace('%', '').strip()
+                if val: e.widget.delete(0, 'end'); e.widget.insert(0, f"{val} %")
+            except: pass
+        def fmt_tasa_in_p(e):
+             try:
+                val = e.widget.get().replace('%', '').strip()
+                e.widget.delete(0, 'end'); e.widget.insert(0, val)
+             except: pass
+        e_p_tasa.bind('<FocusOut>', fmt_tasa_out_p)
+        e_p_tasa.bind('<FocusIn>', fmt_tasa_in_p)
+        
+        e_p_tasa.bind('<FocusOut>', fmt_tasa_out_p)
+        e_p_tasa.bind('<FocusIn>', fmt_tasa_in_p)
+        
+        # --- NAVEGACIÓN CON ENTER ---
+        e_p_fecha.bind("<Return>", lambda e: e_p_monto.focus())
+        e_p_monto.bind("<Return>", lambda e: e_p_tasa.focus())
+        e_p_tasa.bind("<Return>", lambda e: e_p_plazo.focus())
+        e_p_plazo.bind("<Return>", lambda e: e_p_cuota.focus())
+        e_p_cuota.bind("<Return>", lambda e: e_p_dia.focus())
+        # El último campo (Día de pago) puede intentar guardar o enfocar el botón, 
+        # pero enfocar el botón es mejor UX para evitar guardados accidentales.
+        
+        # Cargar Datos
+        conn, cursor = conectar_db()
+        try:
+            cursor.execute("SELECT fecha_desembolso_real, monto_aprobado, tasa_interes, plazo_meses, valor_cuota, dia_pago FROM Microcreditos WHERE id=%s", (id_micro_actual,))
+            row = cursor.fetchone()
+            if row:
+                if row[0]: e_p_fecha.insert(0, row[0])
+                if row[1]: e_p_monto.insert(0, formatear_float_str(row[1]))
+                if row[2]: e_p_tasa.insert(0, f"{row[2]} %")
+                if row[3]: e_p_plazo.insert(0, str(row[3]))
+                if row[4]: e_p_cuota.insert(0, formatear_float_str(row[4]))
+                if row[5]: e_p_dia.insert(0, str(row[5]))
+            else:
+                # Si no hay datos en DB, intentar sincronizar fecha
+                try: e_p_fecha.insert(0, e_f_desembolsado.get())
+                except: pass
+        except Exception as e:
+            messagebox.showerror("Error", f"Error cargando datos: {e}")
+        finally:
+            db_manager.release_connection(conn)
+            
+        def obtener_float(valor):
+            if not valor: return 0.0
+            try:
+                # Eliminar símbolos de moneda y separadores de miles si es necesario
+                clean = str(valor).replace('$', '').replace(',', '').strip()
+                return float(clean)
+            except:
+                return 0.0
+
+        def guardar_popup():
+            try:
+                v_fec = e_p_fecha.get()
+                v_mon = obtener_float(e_p_monto.get())
+                v_tas = float(e_p_tasa.get().replace('%','').strip()) if e_p_tasa.get() else 0.0
+                v_pla = int(e_p_plazo.get()) if e_p_plazo.get() else 0
+                v_cuo = obtener_float(e_p_cuota.get())
+                v_dia = int(e_p_dia.get()) if e_p_dia.get() else 0
+                
+                conn, cursor = conectar_db()
+                cursor.execute("""
+                    UPDATE Microcreditos SET 
+                    fecha_desembolso_real=%s, monto_aprobado=%s, tasa_interes=%s, plazo_meses=%s, valor_cuota=%s, dia_pago=%s
+                    WHERE id=%s
+                """, (v_fec, v_mon, v_tas, v_pla, v_cuo, v_dia, id_micro_actual))
+                conn.commit()
+                db_manager.release_connection(conn)
+                messagebox.showinfo("Guardado", "Detalles financieros guardados correctamente.", parent=t)
+                t.destroy()
+            except Exception as e:
+                 messagebox.showerror("Error", f"Error al guardar: {e}", parent=t)
+
+        ctk.CTkButton(t, text="💾 GUARDAR DETALLES", command=guardar_popup, fg_color="#28a745", hover_color="#218838", font=('Arial', 12, 'bold')).pack(pady=20)
+
+
+    # --- FUNCIÓN DEFINIDA AL INICIO PARA EVITAR NAMEERROR ---
+    def actualizar_pestanas_status():
+        # Lógica simplificada: Solo controlar visibilidad/estado del botón detalles
+        try:
+            # Eliminar pestañas dinámicas si existen (limpieza)
+            try: nb.delete("Desembolsado")
+            except: pass
+            try: nb.delete("Desistimiento")
+            except: pass
+            
+            estado = var_sub_status.get()
+            
+            # Controlar botón detalles
+            if 'btn_detalles_desembolso' in globals() and btn_detalles_desembolso:
+                if estado == "Desembolsado":
+                    btn_detalles_desembolso.configure(state='normal', fg_color="#1860C3")
+                else:
+                    btn_detalles_desembolso.configure(state='disabled', fg_color="grey")
+
+            if estado == "Desistimiento":
+                nb.add("Desistimiento")
+                tab_rem = nb.tab("Desistimiento")
+                nb.set("Desistimiento")
+                ctk.CTkLabel(tab_rem, text="MOTIVO DE DESISTIMIENTO", text_color="#d9534f", font=('Arial', 14, 'bold')).pack(pady=10)
+
+        except Exception as e:
+            print(f"Error UI Status: {e}")
+
 
     COLOR_FONDO = "#FAFAD2"
     win_micro.configure(fg_color=COLOR_FONDO)
@@ -3013,31 +3227,6 @@ def abrir_modulo_microcredito():
 
     var_sub_status = tk.StringVar(value="")
 
-    def actualizar_pestanas_status():
-        # Paso 1: Limpieza de Dinámicas
-        try: nb.delete("Desembolsado")
-        except: pass
-        try: nb.delete("Desistimiento")
-        except: pass
-        
-        estado = var_sub_status.get()
-        
-        # Paso 2: Creación Condicional
-        if estado == "Desembolsado":
-            nb.add("Desembolsado")
-            tab_d = nb.tab("Desembolsado")
-            nb.set("Desembolsado")
-            
-            ctk.CTkLabel(tab_d, text="DETALLE DE DESEMBOLSO", text_color="#1860C3", font=('Arial', 14, 'bold')).pack(pady=10)
-            # Agregar campos específicos si es necesario en el futuro
-            
-        elif estado == "Desistimiento":
-            nb.add("Desistimiento")
-            tab_rem = nb.tab("Desistimiento")
-            nb.set("Desistimiento")
-            
-            ctk.CTkLabel(tab_rem, text="MOTIVO DE DESISTIMIENTO", text_color="#d9534f", font=('Arial', 14, 'bold')).pack(pady=10)
-            # Agregar campos específicos si es necesario en el futuro
 
     def create_sub_opt(parent, label_text, var_val, row_idx, cmd=None):
         ctk.CTkLabel(parent, text=label_text, text_color="black", font=('Arial', 11, 'bold')).grid(row=row_idx, column=0, sticky='w', padx=(20, 10), pady=5)
@@ -3055,6 +3244,13 @@ def abrir_modulo_microcredito():
     e_f_comite = create_sub_opt(f_sub_status, "Comité de Crédito:", "Comité de Crédito", 0, actualizar_pestanas_status)
     e_f_negado_status = create_sub_opt(f_sub_status, "Negado:", "Negado", 1, actualizar_pestanas_status)
     e_f_desembolsado = create_sub_opt(f_sub_status, "Desembolsado:", "Desembolsado", 2, actualizar_pestanas_status)
+    
+    # Botón Para Detalles (Visible siempre, habilitado solo si Desembolsado)
+    global btn_detalles_desembolso
+    btn_detalles_desembolso = ctk.CTkButton(f_sub_status, text="📝 Detalles del Crédito", command=abrir_popup_desembolso, 
+                                            fg_color="grey", state="disabled", width=160, height=28, font=('Arial', 11, 'bold'))
+    btn_detalles_desembolso.grid(row=2, column=2, padx=10, sticky='w')
+
     e_f_desistimiento = create_sub_opt(f_sub_status, "Desistimiento:", "Desistimiento", 3, actualizar_pestanas_status)
 
     ctk.CTkLabel(tab_status, text="Notas y Observaciones de Status:", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(anchor='w', pady=(10, 0))
@@ -3348,6 +3544,9 @@ def cargar_datos_micro(cedula):
     db_manager.release_connection(conn)
     
     if row:
+        # Capture column names
+        colnames = [d[0] for d in cursor.description]
+        
         id_micro_actual = row[0]
         # row[1]=ced, row[2]=ruc, row[3]=obs, row[4]=obs_info
         t_obs_micro.delete("1.0", tk.END); t_obs_micro.insert("1.0", row[3] if row[3] else "")
@@ -3386,10 +3585,15 @@ def cargar_datos_micro(cedula):
             e_m_ref2_tel.delete(0,tk.END); e_m_ref2_tel.insert(0, row[26] if row[26] else "")
 
         # Status
+        status_loaded = None
         if len(row) > 27:
-            seleccionar_status(row[27] if row[27] else None)
+            status_loaded = row[27] if row[27] else None
+            seleccionar_status(status_loaded)
         else:
             seleccionar_status(None)
+
+        # Forzar actualización de pestañas visible
+        actualizar_pestanas_status()
 
         # Cargar Sub-status
         if len(row) > 28:
@@ -3402,6 +3606,10 @@ def cargar_datos_micro(cedula):
             e_f_desistimiento.delete(0, tk.END); e_f_desistimiento.insert(0, row[31] if row[31] else "")
         if len(row) > 32:
             e_f_comite.delete(0, tk.END); e_f_comite.insert(0, row[32] if row[32] else "")
+
+        # --- CARGA DATOS DESEMBOLSADO ---
+        # (Ya no se cargan aquí, se cargan en el Popup al abrirlo)
+        pass
     else:
         id_micro_actual = None
         seleccionar_status(None)
@@ -3448,6 +3656,19 @@ def guardar_microcredito():
 
         if id_micro_actual:
             # Update
+            # Retrieve extra fields for Desembolsado
+            f_desemb_real = ""
+            monto_ap = 0.0
+            tasa_int = 0.0
+            plazo_m = 0
+            val_cuota = 0.0
+            dia_p = 0
+            
+            if status_micro_actual == "Desembolsado": # Only if submitting as Desembolsado
+                 # Financial data is now handled via Popup. 
+                 # We do NOT overwrite it here with empty values.
+                 pass
+
             cursor.execute("""
                 UPDATE Microcreditos SET 
                 observaciones=%s, observaciones_info=%s,
@@ -3461,6 +3682,7 @@ def guardar_microcredito():
             msg = "Datos actualizados."
         else:
             # Insert
+            # Financial data will be null on insert. User must save then open popup.
             cursor.execute("""
                 INSERT INTO Microcreditos (
                     cedula_cliente, ruc, observaciones, observaciones_info,
@@ -6114,8 +6336,139 @@ def abrir_modulo_caja():
 
 
 def abrir_modulo_cartera():
-    win, frame, nb = crear_modulo_generico("Módulo de Cartera")
-    ctk.CTkLabel(frame, text="Contenido específico de Cartera aquí...", text_color="grey", font=("Arial", 12)).pack(pady=50)
+    win, frame, nb = crear_modulo_generico("Módulo de Cartera", color_titulo="#6c757d", tab_name="Estado de Cartera", show_search=False)
+    # Reutilizamos el frame del tab generico
+    tab = nb.tab("Estado de Cartera")
+
+    # --- UI COMPONENTES ---
+    # Top Bar
+    f_top = ctk.CTkFrame(tab, fg_color="transparent")
+    f_top.pack(fill='x', pady=10)
+    
+    ctk.CTkButton(f_top, text="🔄 Actualizar Lista", command=lambda: cargar_cartera(), 
+                  fg_color="#17a2b8", width=150).pack(side='left', padx=10)
+
+    # Treeview
+    cols = ("Cédula", "Cliente", "Monto Crédito", "Plazo", "Cuota", "Total Pagado", "Saldo Est.", "Estado", "Días Mora")
+    tree_cartera = ttk.Treeview(tab, columns=cols, show='headings', height=20)
+    
+    # Headers
+    for c in cols:
+        tree_cartera.heading(c, text=c)
+        tree_cartera.column(c, width=100)
+    
+    tree_cartera.column("Cliente", width=200)
+    tree_cartera.column("Estado", width=120)
+    
+    # Scroll
+    vsb = ttk.Scrollbar(tab, orient="vertical", command=tree_cartera.yview)
+    tree_cartera.configure(yscrollcommand=vsb.set)
+    
+    tree_cartera.pack(side='left', fill='both', expand=True, padx=(10,0))
+    vsb.pack(side='right', fill='y', padx=(0,10))
+    
+    # Tags de color
+    tree_cartera.tag_configure('mora', background='#FFCDD2', foreground='#D32F2F') # Rojo suave
+    tree_cartera.tag_configure('aldia', background='#C8E6C9', foreground='#2E7D32') # Verde suave
+    
+    def cargar_cartera():
+        # Limpiar tree
+        for i in tree_cartera.get_children():
+            tree_cartera.delete(i)
+            
+        conn, cursor = conectar_db()
+        try:
+            # Seleccionar créditos activos
+            cursor.execute("""
+                SELECT cedula_cliente, monto_aprobado, plazo_meses, valor_cuota, dia_pago, fecha_desembolso_real
+                FROM Microcreditos
+                WHERE status = 'Desembolsado'
+            """)
+            creditos = cursor.fetchall()
+            
+            for cred in creditos:
+                # Unpack
+                ced, monto, plazo, cuota, dia_pago, f_desemb_str = cred
+                monto = monto or 0.0
+                plazo = plazo or 0
+                cuota = cuota or 0.0
+                dia_pago = dia_pago or 1
+                
+                # Nombre Cliente
+                cursor.execute("SELECT nombre FROM Clientes WHERE cedula = %s", (ced,))
+                c_data = cursor.fetchone()
+                nombre = c_data[0] if c_data else "Desconocido"
+                
+                # Pagos
+                cursor.execute("SELECT COUNT(*), SUM(total_pagado) FROM Pagos WHERE cedula_cliente = %s", (ced,))
+                p_data = cursor.fetchone()
+                num_pagos = p_data[0] or 0
+                total_pagado = p_data[1] or 0.0
+                
+                # Cálculos
+                # Deuda Total Estimada = Cuota * Plazo
+                deuda_total = cuota * plazo
+                saldo = max(0, deuda_total - total_pagado)
+                
+                # Estado y Mora
+                # Calcular Próximo Vencimiento (misma lógica que Recaudación)
+                cuota_actual = num_pagos + 1
+                
+                estado = "AL DÍA"
+                dias_mora = 0
+                tag = "aldia"
+                
+                if cuota_actual <= plazo:
+                    try:
+                        # Parsear fecha
+                        try: f_ini = datetime.datetime.strptime(f_desemb_str.split(' ')[0], "%d/%m/%Y")
+                        except: f_ini = datetime.datetime.strptime(f_desemb_str.split(' ')[0], "%Y-%m-%d")
+                        
+                        mes_venc = f_ini.month + cuota_actual
+                        anio_venc = f_ini.year + (mes_venc - 1) // 12
+                        mes_venc = (mes_venc - 1) % 12 + 1
+                        
+                        import calendar
+                        last_day = calendar.monthrange(anio_venc, mes_venc)[1]
+                        dia_v = min(int(dia_pago), last_day)
+                        
+                        f_venc = datetime.date(anio_venc, mes_venc, dia_v)
+                        
+                        hoy = datetime.date.today()
+                        delta = (hoy - f_venc).days
+                        
+                        if delta > 0:
+                            dias_mora = delta
+                            estado = "MORA"
+                            tag = "mora"
+                    except:
+                        estado = "Error Fecha"
+                else:
+                    estado = "FINALIZADO" # O Pagado
+                    saldo = 0
+                
+                # Insertar
+                tree_cartera.insert("", "end", values=(
+                    ced, 
+                    nombre, 
+                    f"$ {monto:.2f}", 
+                    f"{plazo} mases", 
+                    f"$ {cuota:.2f}",
+                    f"$ {total_pagado:.2f}",
+                    f"$ {saldo:.2f}",
+                    estado,
+                    str(dias_mora)
+                ), tags=(tag,))
+                
+        except Exception as e:
+            # Evitar popups masivos si falla query, print consola
+            print(f"Error cargando cartera: {e}")
+        finally:
+            db_manager.release_connection(conn)
+
+    # Cargar al inicio
+    # Usar after para dar tiempo a renderizar UI
+    tab.after(500, cargar_cartera)
 
 
 def abrir_ventana_recaudacion():
@@ -6164,44 +6517,114 @@ def abrir_ventana_recaudacion():
             messagebox.showwarning("Aviso", "Ingrese una cédula")
             return
             
-        # --- SIMULACIÓN DE BÚSQUEDA ---
-        # Datos simulados: Vence hace 5 días
-        fake_vencimiento = (datetime.datetime.now() - datetime.timedelta(days=5)).date()
-        fake_capital = 150.00
-        fake_interes = 15.00
-        var_nombre_cliente.set("Cliente Simulado") # Simulación nombre
-        
-        var_nro_cuota.set("3 / 12")
-        var_vencimiento.set(fake_vencimiento.strftime("%Y-%m-%d"))
-        var_capital.set(fake_capital)
-        var_interes.set(fake_interes)
-        
-        # Calcular Mora
-        hoy = datetime.datetime.now().date()
-        delta = (hoy - fake_vencimiento).days
-        
-        dias = max(0, delta)
-        var_dias_mora.set(dias)
-        
-        # Lógica Penalidad: 1.1% por día sobre Saldo Capital
-        mora = round(fake_capital * 0.011 * dias, 2)
-        var_mora.set(mora)
-        
-        total = fake_capital + fake_interes + mora
-        var_total_pagar.set(round(total, 2))
-        
-        # Actualizar Estado Visual
-        if dias > 0:
-            var_estado_visual.set(f"ESTADO: MORA ({dias} DÍAS)")
-            lbl_estado.configure(text_color="#D32F2F", fg_color="#FFCDD2") # Red
-            e_total_pagar.configure(fg_color="#FFCDD2", text_color="#D32F2F")
-        else:
-            var_estado_visual.set("ESTADO: AL DÍA")
-            lbl_estado.configure(text_color="#388E3C", fg_color="#C8E6C9") # Green
-            e_total_pagar.configure(fg_color="#E0F2F1", text_color="#00695C")
-
-        # Set Focus Recibido
-        e_recibido.focus_set()
+        conn, cursor = conectar_db()
+        try:
+            # 1. Buscar Crédito Desembolsado
+            cursor.execute("""
+                SELECT id, fecha_desembolso_real, monto_aprobado, tasa_interes, plazo_meses, valor_cuota, dia_pago
+                FROM Microcreditos 
+                WHERE cedula_cliente = %s AND status = 'Desembolsado'
+                ORDER BY id DESC LIMIT 1
+            """, (ced,))
+            credito = cursor.fetchone()
+            
+            # Buscar nombre del cliente
+            cursor.execute("SELECT nombre FROM Clientes WHERE cedula = %s", (ced,))
+            cli = cursor.fetchone()
+            if cli: var_nombre_cliente.set(cli[0])
+            
+            if not credito:
+                messagebox.showwarning("Aviso", "Este cliente no tiene un crédito marcado como 'Desembolsado'.")
+                return
+            
+            # Unpack credito
+            # id, f_desemb, monto, tasa, plazo, cuota, dia_pago
+            cred_id = credito[0]
+            f_desemb_str = credito[1] # Expected YYYY-MM-DD or similar
+            monto = credito[2] or 0.0
+            plazo = credito[4] or 0
+            val_cuota = credito[5] or 0.0
+            dia_pago = credito[6] or 1
+            
+            # 2. Calcular cuotas pagadas
+            cursor.execute("SELECT COUNT(*), SUM(valor_capital) FROM Pagos WHERE cedula_cliente = %s", (ced,))
+            pagos_info = cursor.fetchone()
+            cuotas_pagadas = pagos_info[0] or 0
+            capital_pagado = pagos_info[1] or 0.0
+            
+            cuota_actual = cuotas_pagadas + 1
+            if cuota_actual > plazo:
+                messagebox.showinfo("Info", "El crédito parece estar totalmente pagado.")
+                return
+            
+            var_nro_cuota.set(f"{cuota_actual} / {plazo}")
+            var_capital.set(round(val_cuota, 2)) # Simplificación: Asumimos cuota fija capital+interes, mostramos total como capital para pago simple o calculamos
+            # Ajuste: El sistema original pide capital e interes separados. Vamos a simplificar usando el valor cuota total en capital 
+            # o dividirlo si tuvieramos tabla de amortización.
+            # User request: "el credito que se creo puede ser cobrado"
+            # Asumiremos cuota nivelada donde el usuario paga el valor_cuota completo.
+            # Para visualización, pondremos el valor_cuota en "Capital" y 0 en Interés para no complicar sin amortización generada.
+            var_capital.set(round(val_cuota, 2))
+            var_interes.set(0.00)
+            
+            # 3. Calcular Vencimiento
+            # Logic: Fecha desembolso -> Primer pago al siguiente mes el día 'dia_pago'
+            # Cuota N: Fecha desembolso + N meses (ajustando día)
+            try:
+                # Parsear fecha desembolso
+                f_ini = datetime.datetime.strptime(f_desemb_str.split(' ')[0], "%d/%m/%Y")
+            except:
+                try:
+                    f_ini = datetime.datetime.strptime(f_desemb_str.split(' ')[0], "%Y-%m-%d")
+                except:
+                    f_ini = datetime.datetime.today() # Fallback
+            
+            # Calcular fecha vencimiento de la cuota actual
+            # Aprox: f_ini + cuota_actual meses. 
+            # Python no tiene add_months directo simple, usamos lógica simple:
+            mes_venc = f_ini.month + cuota_actual
+            anio_venc = f_ini.year + (mes_venc - 1) // 12
+            mes_venc = (mes_venc - 1) % 12 + 1
+            
+            # Validar día
+            try:
+                f_venc = datetime.date(anio_venc, mes_venc, int(dia_pago))
+            except ValueError:
+                # Si el día no existe (ej: 31 feb), usar el último del mes
+                import calendar
+                last_day = calendar.monthrange(anio_venc, mes_venc)[1]
+                f_venc = datetime.date(anio_venc, mes_venc, last_day)
+                
+            var_vencimiento.set(f_venc.strftime("%Y-%m-%d"))
+            
+            # 4. Mora
+            hoy = datetime.date.today()
+            delta = (hoy - f_venc).days
+            dias_mora = max(0, delta)
+            var_dias_mora.set(dias_mora)
+            
+            mora = round(val_cuota * 0.011 * dias_mora, 2) # 1.1% por dia sobre cuota
+            var_mora.set(mora)
+            
+            total = val_cuota + mora
+            var_total_pagar.set(round(total, 2))
+            
+            # Estado Visual
+            if dias_mora > 0:
+                var_estado_visual.set(f"ESTADO: MORA ({dias_mora} DÍAS)")
+                lbl_estado.configure(text_color="#D32F2F", fg_color="#FFCDD2") 
+                e_total_pagar.configure(fg_color="#FFCDD2", text_color="#D32F2F")
+            else:
+                var_estado_visual.set("ESTADO: AL DÍA")
+                lbl_estado.configure(text_color="#388E3C", fg_color="#C8E6C9") 
+                e_total_pagar.configure(fg_color="#E0F2F1", text_color="#00695C")
+                
+            e_recibido.focus_set()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error buscando crédito: {e}")
+        finally:
+            db_manager.release_connection(conn)
         
     def generar_recibo_pdf():
         try:
@@ -6373,9 +6796,36 @@ def abrir_ventana_recaudacion():
             if rec < tot:
                 messagebox.showwarning("Pago Insuficiente", "El monto recibido es menor al total.")
                 return
-                
-            # Simulación DB Update
-            messagebox.showinfo("Éxito", "Pago Registrado Correctamente.\n\nSimulación: Se actualizó la cuota y se ingresó dinero a Caja.")
+            
+            # Guardar en BD
+            conn, cursor = conectar_db()
+            
+            ced = var_cedula_busq.get()
+            # Parsear "X / Y" -> X
+            try:
+                nro = int(var_nro_cuota.get().split('/')[0].strip())
+            except: nro = 0
+            
+            fecha_pago = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            cursor.execute("""
+                INSERT INTO Pagos (fecha, cedula_cliente, cuota_nro, valor_capital, valor_interes, valor_mora, total_pagado, usuario)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                fecha_pago,
+                ced,
+                nro,
+                var_capital.get(),
+                var_interes.get(),
+                var_mora.get(),
+                var_total_pagar.get(),
+                USUARIO_ACTIVO
+            ))
+            
+            conn.commit()
+            db_manager.release_connection(conn)
+
+            messagebox.showinfo("Éxito", "Pago Registrado Correctamente.")
             
             # Habilitar Imprimir Recibo
             btn_imprimir_recibo.configure(state='normal', fg_color="#17a2b8")
@@ -6398,6 +6848,7 @@ def abrir_ventana_recaudacion():
 
 
 if __name__ == '__main__':
+    verificar_integridad_db()
     win = ctk.CTk()
     win.title("Acceso al Sistema - Alianza C3F")
     

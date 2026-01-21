@@ -6378,93 +6378,62 @@ def abrir_modulo_cartera():
             
         conn, cursor = conectar_db()
         try:
-            # Seleccionar créditos activos
-            cursor.execute("""
-                SELECT cedula_cliente, monto_aprobado, plazo_meses, valor_cuota, dia_pago, fecha_desembolso_real
-                FROM Microcreditos
-                WHERE status = 'Desembolsado'
-            """)
+            # Query con JOIN y Subconsultas para pagos
+            # CORRECCIÓN: Calcular saldo real y total pagado
+            query = """
+                SELECT
+                    m.cedula_cliente,
+                    c.nombre,
+                    m.monto_aprobado,
+                    m.plazo_meses,
+                    m.valor_cuota,
+                    m.fecha_desembolso_real,
+                    COALESCE((SELECT SUM(p.valor_capital) FROM Pagos p WHERE p.cedula_cliente = m.cedula_cliente), 0) as capital_pagado,
+                    COALESCE((SELECT SUM(p.total_pagado) FROM Pagos p WHERE p.cedula_cliente = m.cedula_cliente), 0) as total_cash_paid
+                FROM Microcreditos m
+                LEFT JOIN Clientes c ON m.cedula_cliente = c.cedula
+                WHERE m.sub_status = 'Desembolsado'
+            """
+            cursor.execute(query)
             creditos = cursor.fetchall()
             
-            for cred in creditos:
-                # Unpack
-                ced, monto, plazo, cuota, dia_pago, f_desemb_str = cred
-                monto = monto or 0.0
-                plazo = plazo or 0
-                cuota = cuota or 0.0
-                dia_pago = dia_pago or 1
+            for row in creditos:
+                cedula = row[0]
+                cliente = row[1] if row[1] else "Desconocido"
                 
-                # Nombre Cliente
-                cursor.execute("SELECT nombre FROM Clientes WHERE cedula = %s", (ced,))
-                c_data = cursor.fetchone()
-                nombre = c_data[0] if c_data else "Desconocido"
+                monto = row[2] if row[2] else 0.0
+                plazo = row[3] if row[3] else 0
+                cuota = row[4] if row[4] else 0.0
                 
-                # Pagos
-                cursor.execute("SELECT COUNT(*), SUM(total_pagado) FROM Pagos WHERE cedula_cliente = %s", (ced,))
-                p_data = cursor.fetchone()
-                num_pagos = p_data[0] or 0
-                total_pagado = p_data[1] or 0.0
+                capital_pagado = row[6]
+                total_cash_paid = row[7]
                 
-                # Cálculos
-                # Deuda Total Estimada = Cuota * Plazo
-                deuda_total = cuota * plazo
-                saldo = max(0, deuda_total - total_pagado)
+                saldo_est = max(0.0, monto - capital_pagado)
                 
-                # Estado y Mora
-                # Calcular Próximo Vencimiento (misma lógica que Recaudación)
-                cuota_actual = num_pagos + 1
+                monto_str = f"$ {monto:,.2f}"
+                cuota_str = f"$ {cuota:,.2f}"
                 
-                estado = "AL DÍA"
-                dias_mora = 0
-                tag = "aldia"
+                total_pagado_str = f"$ {total_cash_paid:,.2f}"
+                saldo_est_str = f"$ {saldo_est:,.2f}"
                 
-                if cuota_actual <= plazo:
-                    try:
-                        # Parsear fecha
-                        try: f_ini = datetime.datetime.strptime(f_desemb_str.split(' ')[0], "%d/%m/%Y")
-                        except: f_ini = datetime.datetime.strptime(f_desemb_str.split(' ')[0], "%Y-%m-%d")
-                        
-                        mes_venc = f_ini.month + cuota_actual
-                        anio_venc = f_ini.year + (mes_venc - 1) // 12
-                        mes_venc = (mes_venc - 1) % 12 + 1
-                        
-                        import calendar
-                        last_day = calendar.monthrange(anio_venc, mes_venc)[1]
-                        dia_v = min(int(dia_pago), last_day)
-                        
-                        f_venc = datetime.date(anio_venc, mes_venc, dia_v)
-                        
-                        hoy = datetime.date.today()
-                        delta = (hoy - f_venc).days
-                        
-                        if delta > 0:
-                            dias_mora = delta
-                            estado = "MORA"
-                            tag = "mora"
-                    except:
-                        estado = "Error Fecha"
-                else:
-                    estado = "FINALIZADO" # O Pagado
-                    saldo = 0
+                # Estado simple: Si saldo es 0, Pagado
+                estado = "Vigente"
+                if saldo_est <= 0.1: # Tolerancia
+                    estado = "Pagado"
                 
-                # Insertar
+                dias_mora = "0" # Pendiente lógica compleja de mora global
+                
                 tree_cartera.insert("", "end", values=(
-                    ced, 
-                    nombre, 
-                    f"$ {monto:.2f}", 
-                    f"{plazo} mases", 
-                    f"$ {cuota:.2f}",
-                    f"$ {total_pagado:.2f}",
-                    f"$ {saldo:.2f}",
-                    estado,
-                    str(dias_mora)
-                ), tags=(tag,))
+                    cedula, cliente, monto_str, plazo, cuota_str, 
+                    total_pagado_str, saldo_est_str, estado, dias_mora
+                ))
                 
         except Exception as e:
-            # Evitar popups masivos si falla query, print consola
-            print(f"Error cargando cartera: {e}")
+            messagebox.showerror("Error", f"Error al cargar cartera: {e}")
+            print(f"Error cargar_cartera: {e}")
         finally:
             db_manager.release_connection(conn)
+
 
     # Cargar al inicio
     # Usar after para dar tiempo a renderizar UI
@@ -6514,16 +6483,17 @@ def abrir_ventana_recaudacion():
     def buscar_credito_activo():
         ced = var_cedula_busq.get().strip()
         if not ced:
-            messagebox.showwarning("Aviso", "Ingrese una cédula")
+            messagebox.showwarning("Aviso", "Ingrese una cédula", parent=toplevel)
             return
             
         conn, cursor = conectar_db()
         try:
             # 1. Buscar Crédito Desembolsado
+            # CORRECCIÓN: 'Desembolsado' está en sub_status
             cursor.execute("""
                 SELECT id, fecha_desembolso_real, monto_aprobado, tasa_interes, plazo_meses, valor_cuota, dia_pago
                 FROM Microcreditos 
-                WHERE cedula_cliente = %s AND status = 'Desembolsado'
+                WHERE cedula_cliente = %s AND sub_status = 'Desembolsado'
                 ORDER BY id DESC LIMIT 1
             """, (ced,))
             credito = cursor.fetchone()
@@ -6534,7 +6504,7 @@ def abrir_ventana_recaudacion():
             if cli: var_nombre_cliente.set(cli[0])
             
             if not credito:
-                messagebox.showwarning("Aviso", "Este cliente no tiene un crédito marcado como 'Desembolsado'.")
+                messagebox.showwarning("Aviso", "Este cliente no tiene un crédito marcado como 'Desembolsado'.", parent=toplevel)
                 return
             
             # Unpack credito
@@ -6554,7 +6524,7 @@ def abrir_ventana_recaudacion():
             
             cuota_actual = cuotas_pagadas + 1
             if cuota_actual > plazo:
-                messagebox.showinfo("Info", "El crédito parece estar totalmente pagado.")
+                messagebox.showinfo("Info", "El crédito parece estar totalmente pagado.", parent=toplevel)
                 return
             
             var_nro_cuota.set(f"{cuota_actual} / {plazo}")
@@ -6711,6 +6681,10 @@ def abrir_ventana_recaudacion():
     ctk.CTkButton(f_top, text="🔍 BUSCAR CRÉDITO ACTIVO", command=buscar_credito_activo,
                   fg_color="#1860C3", width=200).pack(side='left', padx=20)
                   
+    # Mostrar nombre del cliente encontrado
+    ctk.CTkLabel(f_top, text="Cliente:", font=('Arial', 12, 'bold')).pack(side='left', padx=(10, 5))
+    ctk.CTkLabel(f_top, textvariable=var_nombre_cliente, font=('Arial', 14), text_color="#1860C3").pack(side='left', padx=5)
+                  
     # 2. PANEL CONTENIDO (SPLIT)
     f_content = ctk.CTkFrame(toplevel, fg_color="transparent")
     f_content.pack(fill='both', expand=True, padx=10, pady=5)
@@ -6793,8 +6767,10 @@ def abrir_ventana_recaudacion():
             # Validaciones básicas
             rec = var_recibido.get()
             tot = var_total_pagar.get()
-            if rec < tot:
-                messagebox.showwarning("Pago Insuficiente", "El monto recibido es menor al total.")
+            
+            # Tiny tolerance for floats
+            if rec < (tot - 0.01):
+                messagebox.showwarning("Pago Insuficiente", "El monto recibido es menor al total.", parent=toplevel)
                 return
             
             # Guardar en BD
@@ -6825,13 +6801,13 @@ def abrir_ventana_recaudacion():
             conn.commit()
             db_manager.release_connection(conn)
 
-            messagebox.showinfo("Éxito", "Pago Registrado Correctamente.")
+            messagebox.showinfo("Éxito", "Pago Registrado Correctamente.", parent=toplevel)
             
             # Habilitar Imprimir Recibo
             btn_imprimir_recibo.configure(state='normal', fg_color="#17a2b8")
             
         except Exception as e:
-            messagebox.showerror("Error", f"Error al registrar pago: {e}")
+            messagebox.showerror("Error", f"Error al registrar pago: {e}", parent=toplevel)
 
     f_btns = ctk.CTkFrame(toplevel, fg_color="transparent")
     f_btns.pack(fill='x', padx=40, pady=20)

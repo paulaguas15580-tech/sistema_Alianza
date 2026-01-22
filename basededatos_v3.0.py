@@ -5327,93 +5327,204 @@ def abrir_modulo_intermediacion():
                   fg_color="#28a745", font=('Arial', 12, 'bold'), width=200).pack(pady=20)
 
 def abrir_modulo_consultas():
-    # Variables de UI para mostrar el estado y la fecha
-    var_estado = tk.StringVar()
-    var_fecha = tk.StringVar()
+    # Variables de UI
+    var_busqueda = tk.StringVar() 
+    
+    # -------------------------------------------------------------
+    # SUB-INTERFAZ: TARJETA DE DATO
+    # -------------------------------------------------------------
+    def crear_tarjeta(parent, titulo, valor, subtexto="", color_valor="#1860C3", color_bg="white"):
+        card = ctk.CTkFrame(parent, fg_color=color_bg, corner_radius=15, border_width=1, border_color="#D1D1D1")
+        card.pack_propagate(False) # Respetar tamaño fijo si se setea
+        
+        ctk.CTkLabel(card, text=titulo, font=('Arial', 11, 'bold'), text_color="#777").pack(pady=(15,5), padx=10)
+        ctk.CTkLabel(card, text=valor, font=('Arial', 18, 'bold'), text_color=color_valor).pack(pady=0, padx=10)
+        if subtexto:
+            ctk.CTkLabel(card, text=subtexto, font=('Arial', 10), text_color="#555").pack(pady=(5,10), padx=10)
+        
+        return card
 
     def actualizar_consultas(cedula):
         """Callback que se activa cuando se encuentra un cliente en el buscador genérico."""
+        
+        # 1. LIMPIEZA INICIAL
+        # Borrar widgets anteriores del contenedor 'dashboard_frame'
+        for widget in dashboard_frame.winfo_children():
+            widget.destroy()
+
         if not cedula:
-            var_estado.set("")
-            var_fecha.set("")
+            ctk.CTkLabel(dashboard_frame, text="Realice una búsqueda para ver la información.", text_color="grey").pack(pady=20)
             return
         
         conn, cursor = conectar_db()
         try:
-            # 1. Buscar en Microcreditos (Prioridad para estados finales de trámite)
+            # ------------------------------------------------------------------
+            # PASO 1: OBTENER DATOS DEL CRÉDITO Y ESTADO
+            # ------------------------------------------------------------------
             cursor.execute("""
-                SELECT status, sub_status, fecha_desembolsado, fecha_negado, 
-                       fecha_desistimiento, fecha_comite 
+                SELECT monto_aprobado, plazo_meses, valor_cuota, dia_pago, fecha_desembolso_real, status, cedula_cliente
                 FROM Microcreditos WHERE cedula_cliente = %s
             """, (cedula,))
             micro = cursor.fetchone()
             
-            res_estado = "No definido"
-            res_fecha = "-"
-
-            if micro:
-                # Orden de prioridad según importancia del estado final
-                if micro[2]: # fecha_desembolsado
-                    res_estado = "DESEMBOLSADO"
-                    res_fecha = micro[2]
-                elif micro[3]: # fecha_negado
-                    res_estado = "NEGADO"
-                    res_fecha = micro[3]
-                elif micro[4]: # fecha_desistimiento
-                    res_estado = "DESISTIDO"
-                    res_fecha = micro[4]
-                elif micro[5]: # fecha_comite
-                    res_estado = "EN COMITÉ"
-                    res_fecha = micro[5]
-                else:
-                    # Si no tiene fecha específica, usamos el status general o sub_status
-                    res_estado = micro[0] or "MICROCRÉDITO (EN TRÁMITE)"
-                    res_fecha = "Pendiente"
-            else:
-                # 2. Si no hay registro en Microcreditos, consultamos el producto en la ficha del Cliente
-                cursor.execute("SELECT producto, apertura FROM Clientes WHERE cedula = %s", (cedula,))
-                cli = cursor.fetchone()
-                if cli:
-                    res_estado = (cli[0] or "CLIENTE REGISTRADO").upper()
-                    res_fecha = cli[1] or "Sin Fecha de Apertura"
+            monto = 0.0
+            plazo = 0
+            cuota = 0.0
+            dia_p = 0
+            fecha_des = None
+            status = "SIN CRÉDITO ACTIVO"
             
-            var_estado.set(res_estado)
-            var_fecha.set(res_fecha)
+            tiene_credito = False
+            
+            if micro:
+                tiene_credito = True
+                monto = micro[0] or 0.0
+                plazo = micro[1] or 0
+                cuota = micro[2] or 0.0
+                dia_p = micro[3] or 0
+                fecha_des = micro[4]
+                status = micro[5] or "EN TRÁMITE"
+            
+            # Si no hay microcrédito, buscar cliente básico
+            else:
+                cursor.execute("SELECT nombre FROM Clientes WHERE cedula = %s", (cedula,))
+                cli = cursor.fetchone()
+                if cli: 
+                    status = "CLIENTE REGISTRADO"
+                else:
+                    status = "NO ENCONTRADO"
+
+            # ------------------------------------------------------------------
+            # PASO 2: OBTENER TOTAL PAGADO (SOLO SI TIENE CRÉDITO)
+            # ------------------------------------------------------------------
+            total_pagado = 0.0
+            ultimos_pagos = []
+            
+            if tiene_credito:
+                # Calcular total pagado (Suma histórica)
+                cursor.execute("SELECT SUM(total_pagado) FROM Pagos WHERE cedula_cliente = %s", (cedula,))
+                res_sum = cursor.fetchone()
+                if res_sum and res_sum[0]:
+                    total_pagado = res_sum[0]
+                
+                # Obtener últimos 3 pagos
+                cursor.execute("""
+                    SELECT fecha, cuota_nro, total_pagado 
+                    FROM Pagos 
+                    WHERE cedula_cliente = %s 
+                    ORDER BY id DESC LIMIT 3
+                """, (cedula,))
+                ultimos_pagos = cursor.fetchall()
+
+            # ------------------------------------------------------------------
+            # PASO 3: CÁLCULOS FINANCIEROS
+            # ------------------------------------------------------------------
+            # Proyección total deuda (Capital + Interés aprox simples) -> Cuota * Plazo
+            # (Ajustar lógica si su sistema maneja saldo de capital puro, pero usamos la proyección como aproximado)
+            total_deuda_proy = cuota * plazo
+            saldo_pendiente = total_deuda_proy - total_pagado
+            if saldo_pendiente < 0: saldo_pendiente = 0.0
+            
+            if status == "DESEMBOLSADO":
+                pass # Status OK
+            elif status == "SIN CRÉDITO ACTIVO":
+                pass
+            else:
+                saldo_pendiente = 0.0 # Si no está desembolsado, no debe nada "oficialmente" en cartera activa
+            
+            # Lógica de Mora Simple (Fecha actual vs Dia de Pago)
+            # (Muy simplificada para visualización)
+            color_status = "#1860C3" # Azul default
+            hoy = datetime.datetime.now()
+            
+            status_display = status.upper()
+            
+            if status == "DESEMBOLSADO":
+                # Si hoy es > dia_pago del mes actual... (Lógica básica de ejemplo)
+                pass 
+                # Se podría refinar validando si ya pagó el mes en curso, pero requiere tabla compleja.
+                # Dejamos color azul o rojo si hay una marca específica.
+            
+            # ------------------------------------------------------------------
+            # PASO 4: RENDERIZAR DASHBOARD (GRID DE TARJETAS)
+            # ------------------------------------------------------------------
+            
+            grid_cards = ctk.CTkFrame(dashboard_frame, fg_color="transparent")
+            grid_cards.pack(fill='x', pady=10, padx=10)
+            
+            # Configurar Grid 2x2 o 4x1. Usaremos 4 columnas si cabe, o 2 filas de 2.
+            # Grid 1x4 se ve bien en pantalla ancha.
+            
+            # Tarjeta 1: MONTO
+            card_a = crear_tarjeta(grid_cards, "MONTO OTORGADO", formatear_moneda(monto), f"Plazo: {plazo} Meses")
+            card_a.pack(side='left', fill='both', expand=True, padx=10)
+            
+            # Tarjeta 2: SALDO (Importante)
+            color_saldo = "#D32F2F" if saldo_pendiente > 0 else "green"
+            card_b = crear_tarjeta(grid_cards, "SALDO PENDIENTE EST.", formatear_moneda(saldo_pendiente), "Calculado (Cuota*Plazo - Pagos)", color_valor=color_saldo)
+            card_b.pack(side='left', fill='both', expand=True, padx=10)
+            
+            # Tarjeta 3: PRÓXIMA CUOTA
+            sub_pago = f"Día {dia_p} de cada mes" if dia_p > 0 else "-"
+            card_c = crear_tarjeta(grid_cards, "VALOR CUOTA", formatear_moneda(cuota), sub_pago, color_valor="#F39C12")
+            card_c.pack(side='left', fill='both', expand=True, padx=10)
+            
+            # Tarjeta 4: STATUS
+            card_d = crear_tarjeta(grid_cards, "ESTADO ACTUAL", status_display, "", color_valor=color_status, color_bg="#F0F8FF")
+            card_d.pack(side='left', fill='both', expand=True, padx=10)
+
+            # ------------------------------------------------------------------
+            # PASO 5: TABLA DE HISTORIAL (POS-TARJETAS)
+            # ------------------------------------------------------------------
+            if ultimos_pagos:
+                lbl_hist = ctk.CTkLabel(dashboard_frame, text="ÚLTIMAS TRANSACCIONES DETECTADAS", font=('Arial', 12, 'bold'), text_color="grey")
+                lbl_hist.pack(pady=(20, 5), anchor='w', padx=20)
+                
+                # Treeview simple
+                cols = ("Fecha", "Cuota", "Monto")
+                tree = ttk.Treeview(dashboard_frame, columns=cols, show='headings', height=4)
+                
+                tree.heading("Fecha", text="Fecha Reg.")
+                tree.heading("Cuota", text="Nro Cuota")
+                tree.heading("Monto", text="Total Pagado")
+                
+                tree.column("Fecha", width=150)
+                tree.column("Cuota", width=100)
+                tree.column("Monto", width=120, anchor='e')
+                
+                for p in ultimos_pagos:
+                    # p: (fecha, cuota_nro, total)
+                    f_fmt = p[0]
+                    c_fmt = str(p[1])
+                    m_fmt = formatear_moneda(p[2] or 0)
+                    tree.insert("", "end", values=(f_fmt, c_fmt, m_fmt))
+                    
+                tree.pack(fill='x', padx=20, pady=5)
+                
+            elif tiene_credito:
+                ctk.CTkLabel(dashboard_frame, text="No se han registrado pagos en el sistema aún.", text_color="grey", font=('Arial', 11, 'italic')).pack(pady=20)
+
         except Exception as e:
-            print(f"Error en consulta de estados: {e}")
+            ctk.CTkLabel(dashboard_frame, text=f"Error cargando dashboard: {e}", text_color="red").pack(pady=20)
+            print(f"Error Dash: {e}")
         finally:
             db_manager.release_connection(conn)
 
-    # Llamada al generador con el callback de búsqueda
-    win, frame, nb = crear_modulo_generico("Módulo de Consultas", search_callback=actualizar_consultas)
+    # Llamada al generador
+    win, frame, nb_ignore = crear_modulo_generico("Módulo de Consultas Financieras", search_callback=actualizar_consultas)
     
-    # --- UI ADICIONAL PARA CONSULTAS ---
-    # Contenedor central resaltado
-    status_frame = ctk.CTkFrame(frame, fg_color="#F0F8FF", corner_radius=15, border_width=1, border_color="#A9CCE3")
-    status_frame.pack(pady=30, padx=50, fill='x')
+    # Contenedor Principal del Dashboard
+    global dashboard_frame
+    dashboard_frame = ctk.CTkFrame(frame, fg_color="transparent")
+    dashboard_frame.pack(fill='both', expand=True, padx=20, pady=20)
     
-    inner = ctk.CTkFrame(status_frame, fg_color="transparent")
-    inner.pack(padx=40, pady=30, expand=True)
-    
-    # Campo de Visualización de Estado
-    ctk.CTkLabel(inner, text="ESTADO DEL PROCESO:", font=('Arial', 14, 'bold'), text_color="#1860C3").grid(row=0, column=0, padx=(0,20), pady=15, sticky='e')
-    e_estado = ctk.CTkEntry(inner, textvariable=var_estado, width=350, height=40, font=('Arial', 16, 'bold'), 
-                            fg_color="white", text_color="#2E8B57", border_color="#1860C3", state='readonly', corner_radius=8)
-    e_estado.grid(row=0, column=1, pady=15)
-    
-    # Campo de Visualización de Fecha
-    ctk.CTkLabel(inner, text="FECHA ASOCIADA:", font=('Arial', 13, 'bold'), text_color="#555555").grid(row=1, column=0, padx=(0,20), pady=10, sticky='e')
-    e_fecha = ctk.CTkEntry(inner, textvariable=var_fecha, width=350, height=35, font=('Arial', 14), 
-                           fg_color="#F9F9F9", text_color="black", border_color="#CCCCCC", state='readonly', corner_radius=8)
-    e_fecha.grid(row=1, column=1, pady=10)
+    # Mensaje inicial
+    ctk.CTkLabel(dashboard_frame, text="🔎 Busque un cliente para visualizar su Dashboard Financiero.", font=('Arial', 14), text_color="grey").pack(pady=50)
 
-    # Nota informativa
-    ctk.CTkLabel(frame, text="* La información se sincroniza en tiempo real de la base de datos central.", 
-                 font=("Arial", 11, "italic"), text_color="grey").pack(pady=10)
-    
-    # Mensaje de ayuda inicial
-    var_estado.set("ESPERANDO BÚSQUEDA...")
-    var_fecha.set("-")
+    # Helpers
+    def formatear_moneda(val):
+        return f"$ {val:,.2f}"
+
 
 def abrir_modulo_caja():
     # Variables de UI

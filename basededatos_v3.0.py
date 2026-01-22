@@ -3000,10 +3000,10 @@ def abrir_modulo_microcredito():
                 col_prefix = "ref1_" if num_ref == 1 else "ref2_"
                 query_ins = f"""
                     INSERT INTO Microcreditos (
-                        cedula_cliente, ruc_cliente, 
-                        {col_prefix}nombre, {col_prefix}telefono, {col_prefix}fecha_verifica, {col_prefix}hora_verifica,
+                        cedula_cliente, ruc, 
+                        {col_prefix}nombre, {col_prefix}telefono, {col_prefix}fecha, {col_prefix}hora,
                         {col_prefix}relacion, {col_prefix}tiempo_conocer, {col_prefix}direccion, {col_prefix}tipo_vivienda,
-                        {col_prefix}cargas_familiares, {col_prefix}patrimonio, {col_prefix}persona_responsable
+                        {col_prefix}cargas, {col_prefix}patrimonio, {col_prefix}responsable
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 vals_ins = (
@@ -3022,9 +3022,9 @@ def abrir_modulo_microcredito():
             col_prefix = "ref1_" if num_ref == 1 else "ref2_"
             query_upd = f"""
                 UPDATE Microcreditos SET
-                    {col_prefix}nombre=%s, {col_prefix}telefono=%s, {col_prefix}fecha_verifica=%s, {col_prefix}hora_verifica=%s,
+                    {col_prefix}nombre=%s, {col_prefix}telefono=%s, {col_prefix}fecha=%s, {col_prefix}hora=%s,
                     {col_prefix}relacion=%s, {col_prefix}tiempo_conocer=%s, {col_prefix}direccion=%s, {col_prefix}tipo_vivienda=%s,
-                    {col_prefix}cargas_familiares=%s, {col_prefix}patrimonio=%s, {col_prefix}persona_responsable=%s
+                    {col_prefix}cargas=%s, {col_prefix}patrimonio=%s, {col_prefix}responsable=%s
                 WHERE id = %s
             """
             vals_upd = (

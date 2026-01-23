@@ -3717,7 +3717,7 @@ def guardar_microcredito():
 
 # --- MÓDULOS NUEVOS (Structure) ---
 # --- MÓDULOS GENÉRICOS ---
-def crear_modulo_generico(titulo, color_titulo="#1860C3", search_callback=None, tab_name="General", show_search=True):
+def crear_modulo_generico(titulo, color_titulo="#1860C3", search_callback=None, tab_name="General", show_search=True, extra_widgets_callback=None):
     win = ctk.CTkToplevel()
     win.title(titulo)
     win.geometry("1100x750")
@@ -3758,6 +3758,9 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3", search_callback=None, 
         ctk.CTkLabel(sf_in, text="Cliente:", font=('Arial', 11), text_color="black").pack(side='left', padx=(10,0))
         e_nombre = ctk.CTkEntry(sf_in, width=300, fg_color="white", text_color="black")
         e_nombre.pack(side='left', padx=5)
+        
+        if extra_widgets_callback:
+            extra_widgets_callback(sf_in)
         
         def buscar_cliente_gen(event=None):
             ced = e_cedula.get().strip(); ruc = e_ruc.get().strip(); nom = e_nombre.get().strip()
@@ -5326,6 +5329,131 @@ def abrir_modulo_intermediacion():
     ctk.CTkButton(tab_proc, text="💾 GUARDAR PROCESO", command=guardar_gestion, 
                   fg_color="#28a745", font=('Arial', 12, 'bold'), width=200).pack(pady=20)
 
+def abrir_dashboard_estadisticas():
+    win = ctk.CTkToplevel()
+    win.title("Tablero de Control - Alianza C3F")
+    win.geometry("900x600")
+    win.after(100, lambda: win.state('zoomed')) 
+    win.configure(fg_color="#FAFAD2")
+    
+    # Encabezado Principal
+    ctk.CTkLabel(win, text="RESUMEN FINANCIERO GLOBAL", text_color="#1860C3", font=('Arial', 28, 'bold')).pack(pady=(30, 20))
+    
+    # Contenedor KPIs
+    f_kpi = ctk.CTkFrame(win, fg_color="transparent")
+    f_kpi.pack(fill='x', padx=40, pady=10)
+    
+    # Función para crear Tarjetas KPI mejoradas
+    def crear_card_kpi(parent, title, val_func, color_bg, icon_char):
+        # Frame Principal de la Tarjeta
+        c = ctk.CTkFrame(parent, fg_color=color_bg, corner_radius=15, border_width=1, border_color="#E0E0E0")
+        c.pack(side='left', fill='both', expand=True, padx=10)
+        
+        # Grid interno 2 columnas
+        c.grid_columnconfigure(0, weight=1) # Icono
+        c.grid_columnconfigure(1, weight=3) # Texto
+        
+        # Columna 0: Icono
+        ctk.CTkLabel(c, text=icon_char, font=('Arial', 40)).grid(row=0, column=0, rowspan=2, padx=(10,5), pady=10)
+        
+        # Columna 1: Valor y Título
+        try:
+            val = val_func()
+        except Exception as e:
+            val = "Error"
+            print(f"Error KPI {title}: {e}")
+            
+        # Valor (Grande)
+        ctk.CTkLabel(c, text=str(val), text_color="white", font=('Arial', 32, 'bold')).grid(row=0, column=1, sticky='s', pady=(15,0), padx=5)
+        # Título (Pequeño)
+        ctk.CTkLabel(c, text=title, text_color="#ECF0F1", font=('Arial', 12, 'bold')).grid(row=1, column=1, sticky='n', pady=(0,15), padx=5)
+
+        return c
+
+    conn, cursor = conectar_db()
+    
+    # Helpers query (Mismas queries, solo cambia UI)
+    def get_total_clientes():
+        cursor.execute("SELECT COUNT(*) FROM Clientes")
+        return cursor.fetchone()[0]
+    
+    def get_capital_prestado():
+        cursor.execute("SELECT SUM(monto_aprobado) FROM Microcreditos")
+        res = cursor.fetchone()[0]
+        return f"$ {res:,.2f}" if res else "$ 0.00"
+        
+    def get_total_recaudado():
+        try:
+            cursor.execute("SELECT SUM(total_pagado) FROM Pagos")
+            res = cursor.fetchone()[0]
+            return f"$ {res:,.2f}" if res else "$ 0.00"
+        except: return "$ 0.00"
+
+    # Tarjetas con colores vibrantes e iconos
+    crear_card_kpi(f_kpi, "CLIENTES TOTALES", get_total_clientes, "#2E86C1", "👥")      # Azul
+    crear_card_kpi(f_kpi, "CAPITAL PRESTADO", get_capital_prestado, "#2ECC71", "💰")      # Verde
+    crear_card_kpi(f_kpi, "TOTAL RECAUDADO", get_total_recaudado, "#1ABC9C", "💵")       # Turquesa
+    crear_card_kpi(f_kpi, "CARTERA VENCIDA", lambda: "Por Calcular", "#E74C3C", "🚨")     # Rojo
+
+    # Sección Alerta (Treeview)
+    ctk.CTkLabel(win, text="🚨 TOP 5 - MAYOR ENDEUDAMIENTO", text_color="#D32F2F", font=('Arial', 20, 'bold')).pack(pady=(40, 15))
+    
+    # Estilos Treeview (Zebra Striping)
+    style = ttk.Style()
+    style.theme_use("clam") # Base theme para permitir personalización de colores
+    style.configure("Treeview", 
+                    background="#34495E", 
+                    foreground="white", 
+                    fieldbackground="#34495E", 
+                    rowheight=30,
+                    font=('Arial', 11))
+    
+    style.configure("Treeview.Heading", 
+                    background="#2C3E50", 
+                    foreground="white", 
+                    font=('Arial', 11, 'bold'))
+    
+    style.map("Treeview", background=[('selected', '#1860C3')])
+
+    cols = ("Cliente", "Monto Aprobado", "Plazo")
+    tree = ttk.Treeview(win, columns=cols, show='headings', height=6)
+    
+    tree.heading("Cliente", text="NOMBRES CLIENTE")
+    tree.heading("Monto Aprobado", text="MONTO APROBADO")
+    tree.heading("Plazo", text="PLAZO (MESES)")
+    
+    tree.column("Cliente", width=400)
+    tree.column("Monto Aprobado", width=200, anchor='e')
+    tree.column("Plazo", width=150, anchor='center')
+    
+    # Tag configuration for stripes
+    tree.tag_configure('odd', background='#2C3E50')
+    tree.tag_configure('even', background='#34495E')
+    
+    try:
+        cursor.execute("""
+            SELECT c.nombre, m.monto_aprobado, m.plazo_meses 
+            FROM Microcreditos m 
+            JOIN Clientes c ON m.cedula_cliente = c.cedula 
+            ORDER BY m.monto_aprobado DESC LIMIT 5
+        """)
+        rows = cursor.fetchall()
+        for i, r in enumerate(rows):
+            tag = 'odd' if i % 2 == 0 else 'even'
+            m_fmt = f"$ {r[1]:,.2f}" if r[1] else "$ 0.00"
+            tree.insert("", "end", values=(r[0], m_fmt, r[2]), tags=(tag,))
+    except Exception as e:
+        print(f"Error Tree Stats: {e}")
+        
+    tree.pack(fill='x', padx=80, pady=10)
+    
+    db_manager.release_connection(conn)
+    
+    ctk.CTkButton(win, text="Cerrar Tablero", command=win.destroy, 
+                  fg_color="#7F8C8D", hover_color="#95A5A6", 
+                  width=150, font=('Arial', 12, 'bold')).pack(pady=30)
+
+
 def abrir_modulo_consultas():
     # Variables de UI
     var_busqueda = tk.StringVar() 
@@ -5510,8 +5638,13 @@ def abrir_modulo_consultas():
         finally:
             db_manager.release_connection(conn)
 
+    def agregar_btn_stats(parent):
+        btn_dashboard = ctk.CTkButton(parent, text="📊 VER ESTADÍSTICAS", command=abrir_dashboard_estadisticas,
+                                      fg_color="#F39C12", hover_color="#E67E22", font=('Arial', 11, 'bold'), width=140)
+        btn_dashboard.pack(side='left', padx=20)
+
     # Llamada al generador
-    win, frame, nb_ignore = crear_modulo_generico("Módulo de Consultas Financieras", search_callback=actualizar_consultas)
+    win, frame, nb_ignore = crear_modulo_generico("Módulo de Consultas Financieras", search_callback=actualizar_consultas, extra_widgets_callback=agregar_btn_stats)
     
     # Contenedor Principal del Dashboard
     global dashboard_frame

@@ -19,7 +19,19 @@ import qrcode
 import base64
 from io import BytesIO
 from db_manager import DatabaseManager
+from db_manager import DatabaseManager
 import psycopg2.extras
+import sys
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 
 
@@ -306,6 +318,17 @@ def crear_tablas():
                 chk_informe INTEGER DEFAULT 0, desc_informe TEXT,
                 
                 FOREIGN KEY (cedula_cliente) REFERENCES Clientes(cedula)
+            )
+        """)
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS PagosBuro (
+                id {sql_type("SERIAL PRIMARY KEY")},
+                fecha TEXT,
+                cedula_cliente TEXT,
+                nombre_cliente TEXT,
+                monto REAL,
+                usuario TEXT
             )
         """)
 
@@ -1536,13 +1559,421 @@ def abrir_modulo_informes():
         except Exception as e:
             messagebox.showerror("Error", f"Error: {e}", parent=win_informes)
 
+    def exportar_cartera_excel():
+        """Exporta el reporte de Cartera con saldos y estados calculados."""
+        try:
+            with db_connection() as (conn, cursor):
+                query = """
+                    SELECT
+                        m.cedula_cliente,
+                        c.nombre,
+                        m.monto_aprobado,
+                        m.plazo_meses,
+                        m.valor_cuota,
+                        m.fecha_desembolso_real,
+                        COALESCE((SELECT SUM(p.valor_capital) FROM Pagos p WHERE p.cedula_cliente = m.cedula_cliente), 0) as capital_pagado,
+                        COALESCE((SELECT SUM(p.total_pagado) FROM Pagos p WHERE p.cedula_cliente = m.cedula_cliente), 0) as total_cash_paid
+                    FROM Microcreditos m
+                    LEFT JOIN Clientes c ON m.cedula_cliente = c.cedula
+                    WHERE m.sub_status = 'Desembolsado'
+                """
+                cursor.execute(query)
+                creditos = cursor.fetchall()
+
+            if not creditos:
+                messagebox.showinfo("Información", "No hay créditos desembolsados para reporte.", parent=win_informes)
+                return
+
+            rows_processed = []
+            for row in creditos:
+                cedula = row[0]
+                cliente = row[1] if row[1] else "Desconocido"
+                monto = row[2] if row[2] else 0.0
+                plazo = row[3] if row[3] else 0
+                cuota = row[4] if row[4] else 0.0
+                capital_pagado = row[6]
+                total_cash_paid = row[7]
+                
+                saldo_est = max(0.0, monto - capital_pagado)
+                
+                # Estado simple
+                estado = "Vigente"
+                if saldo_est <= 0.1:
+                    estado = "Pagado"
+                
+                dias_mora = 0 # Valor fijo por ahora
+
+                rows_processed.append({
+                    "Cédula": cedula,
+                    "Cliente": cliente,
+                    "Monto Crédito ($)": monto,
+                    "Plazo (Meses)": plazo,
+                    "Cuota ($)": cuota,
+                    "Total Pagado ($)": total_cash_paid,
+                    "Saldo Est. ($)": saldo_est,
+                    "Estado": estado,
+                    "Días Mora": dias_mora
+                })
+
+            df = pd.DataFrame(rows_processed)
+            
+            filename = filedialog.asksaveasfilename(title="Guardar Reporte Cartera", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Reporte_Cartera_{datetime.datetime.now().strftime('%Y%m%d')}", parent=win_informes)
+            
+            if filename:
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Cartera')
+                workbook  = writer.book
+                worksheet = writer.sheets['Cartera']
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#9BC2E6', 'border': 1})
+                
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, max(len(str(value)), 12) + 2)
+                    
+                writer.close()
+                messagebox.showinfo("Éxito", "Reporte de Cartera exportado correctamente.", parent=win_informes)
+                win_informes.lift()
+                win_informes.focus_force()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al exportar cartera: {e}", parent=win_informes)
+
+    ctk.CTkButton(btn_container, text="📘 EXCEL CARTERA", command=exportar_cartera_excel, 
+                  font=('Arial', 14, 'bold'), fg_color="#17a2b8", hover_color="#138496", height=50, width=250).grid(row=1, column=0, padx=20, pady=10)
+
+    def exportar_microcredito_excel():
+        """Exporta el reporte de Microcréditos completo."""
+        try:
+            with db_connection() as (conn, cursor):
+                query = """
+                    SELECT
+                        m.cedula_cliente,
+                        c.nombre,
+                        c.asesor,
+                        m.status,
+                        m.sub_status,
+                        m.monto_aprobado,
+                        m.plazo_meses,
+                        m.valor_cuota,
+                        m.fecha_desembolso_real,
+                        m.dia_pago,
+                        m.observaciones
+                    FROM Microcreditos m
+                    LEFT JOIN Clientes c ON m.cedula_cliente = c.cedula
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+            if not rows:
+                messagebox.showinfo("Información", "No hay microcréditos registrados para reporte.", parent=win_informes)
+                return
+
+            rows_processed = []
+            for row in rows:
+                # Normalización de datos
+                rs = list(row)
+                # Formatos de moneda y limpieza
+                if rs[5]: rs[5] = float(rs[5]) # Monto
+                if rs[7]: rs[7] = float(rs[7]) # Cuota
+                
+                rows_processed.append({
+                    "Cédula": rs[0],
+                    "Cliente": rs[1],
+                    "Asesor": rs[2],
+                    "Estado": rs[3],
+                    "Sub-Estado": rs[4],
+                    "Monto Aprobado ($)": rs[5],
+                    "Plazo (Meses)": rs[6],
+                    "Cuota ($)": rs[7],
+                    "Fecha Desembolso": rs[8],
+                    "Día de Pago": rs[9],
+                    "Observaciones": rs[10]
+                })
+
+            df = pd.DataFrame(rows_processed)
+            
+            filename = filedialog.asksaveasfilename(title="Guardar Reporte Microcrédito", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Reporte_Microcredito_{datetime.datetime.now().strftime('%Y%m%d')}", parent=win_informes)
+            
+            if filename:
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Microcredito')
+                workbook  = writer.book
+                worksheet = writer.sheets['Microcredito']
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#FFD966', 'border': 1})
+                
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, max(len(str(value)), 12) + 2)
+                    
+                writer.close()
+                messagebox.showinfo("Éxito", "Reporte de Microcrédito exportado correctamente.", parent=win_informes)
+                win_informes.lift()
+                win_informes.focus_force()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al exportar microcrédito: {e}", parent=win_informes)
+
+    ctk.CTkButton(btn_container, text="📒 EXCEL MICROCRÉDITO", command=exportar_microcredito_excel, 
+                  font=('Arial', 14, 'bold'), fg_color="#F39C12", hover_color="#D68910", height=50, width=250).grid(row=1, column=1, padx=20, pady=10)
+
+    def exportar_pagos_excel():
+        """Exporta el reporte de Pagos/Cobros completo."""
+        try:
+            with db_connection() as (conn, cursor):
+                query = """
+                    SELECT
+                        p.fecha,
+                        p.cedula_cliente,
+                        c.nombre,
+                        p.cuota_nro,
+                        p.valor_capital,
+                        p.valor_interes,
+                        p.valor_mora,
+                        p.total_pagado,
+                        p.usuario
+                    FROM Pagos p
+                    LEFT JOIN Clientes c ON p.cedula_cliente = c.cedula
+                    ORDER BY p.id DESC
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+            if not rows:
+                messagebox.showinfo("Información", "No hay pagos registrados para reporte.", parent=win_informes)
+                return
+
+            rows_processed = []
+            for row in rows:
+                rs = list(row)
+                # Formatos de moneda
+                if rs[4]: rs[4] = float(rs[4]) # Capital
+                if rs[5]: rs[5] = float(rs[5]) # Interes
+                if rs[6]: rs[6] = float(rs[6]) # Mora
+                if rs[7]: rs[7] = float(rs[7]) # Total
+
+                rows_processed.append({
+                    "Fecha": rs[0],
+                    "Cédula": rs[1],
+                    "Cliente": rs[2] if rs[2] else "Desconocido",
+                    "Nro. Cuota": rs[3],
+                    "Capital ($)": rs[4],
+                    "Interés ($)": rs[5],
+                    "Mora ($)": rs[6],
+                    "Total Pagado ($)": rs[7],
+                    "Usuario": rs[8]
+                })
+
+            df = pd.DataFrame(rows_processed)
+            
+            filename = filedialog.asksaveasfilename(title="Guardar Reporte Pagos", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Reporte_Pagos_{datetime.datetime.now().strftime('%Y%m%d')}", parent=win_informes)
+            
+            if filename:
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Pagos')
+                workbook  = writer.book
+                worksheet = writer.sheets['Pagos']
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#E2EFDA', 'border': 1})
+                
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, max(len(str(value)), 12) + 2)
+                    
+                writer.close()
+                messagebox.showinfo("Éxito", "Reporte de Pagos exportado correctamente.", parent=win_informes)
+                win_informes.lift()
+                win_informes.focus_force()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al exportar pagos: {e}", parent=win_informes)
+
+    def exportar_buro_excel():
+        """Exporta el reporte de Pagos Buró."""
+        try:
+            with db_connection() as (conn, cursor):
+                query = """
+                    SELECT
+                        b.fecha,
+                        b.cedula_cliente,
+                        b.nombre_cliente,
+                        b.monto,
+                        b.usuario
+                    FROM PagosBuro b
+                    ORDER BY b.id DESC
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+            if not rows:
+                messagebox.showinfo("Información", "No hay cobros de buró registrados para reporte.", parent=win_informes)
+                return
+
+            rows_processed = []
+            for row in rows:
+                rs = list(row)
+                if rs[3]: rs[3] = float(rs[3]) # Monto
+
+                rows_processed.append({
+                    "Fecha": rs[0],
+                    "Cédula": rs[1],
+                    "Cliente": rs[2],
+                    "Monto ($)": rs[3],
+                    "Usuario": rs[4]
+                })
+
+            df = pd.DataFrame(rows_processed)
+            
+            filename = filedialog.asksaveasfilename(title="Guardar Reporte Buró", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Reporte_Buro_{datetime.datetime.now().strftime('%Y%m%d')}", parent=win_informes)
+            
+            if filename:
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Buro')
+                workbook  = writer.book
+                worksheet = writer.sheets['Buro']
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#D7BDE2', 'border': 1})
+                
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, max(len(str(value)), 12) + 2)
+                    
+                writer.close()
+                messagebox.showinfo("Éxito", "Reporte de Buró exportado correctamente.", parent=win_informes)
+                win_informes.lift()
+                win_informes.focus_force()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al exportar buró: {e}", parent=win_informes)
+
+    ctk.CTkButton(btn_container, text="💳 EXCEL BURÓ", command=exportar_buro_excel, 
+                  font=('Arial', 14, 'bold'), fg_color="#6f42c1", hover_color="#5a32a3", height=50, width=250).grid(row=1, column=2, padx=20, pady=10)
+
+    ctk.CTkButton(btn_container, text="💰 EXCEL COBROS", command=exportar_pagos_excel, 
+                  font=('Arial', 14, 'bold'), fg_color="#28a745", hover_color="#218838", height=50, width=250).grid(row=0, column=2, padx=20, pady=10)
+
     ctk.CTkButton(btn_container, text="📊 EXCEL CAJA GLOBAL", command=exportar_caja_global_excel, 
                   font=('Arial', 14, 'bold'), fg_color="#28a745", hover_color="#218838", height=50, width=250).grid(row=0, column=0, padx=20, pady=10)
     
     ctk.CTkButton(btn_container, text="🟢 EXCEL BASE MAESTRA", command=exportar_clientes_global_excel, 
                   font=('Arial', 14, 'bold'), fg_color="#28a745", hover_color="#218838", height=50, width=250).grid(row=0, column=1, padx=20, pady=10)
     
-    ctk.CTkLabel(reports_frame, text="(Próximamente más opciones de reportes...)", text_color="grey", font=('Arial', 11, 'italic')).pack(pady=40)
+    def exportar_intermediacion_excel():
+        """Exporta el reporte de Intermediación."""
+        try:
+            with db_connection() as (conn, cursor):
+                query = """
+                    SELECT
+                        i.cedula_cliente,
+                        c.nombre,
+                        i.fecha_cita,
+                        i.informe_cita,
+                        i.fecha_desembolso_inter,
+                        i.desc_informe
+                    FROM Intermediacion_Detalles i
+                    LEFT JOIN Clientes c ON i.cedula_cliente = c.cedula
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+            if not rows:
+                messagebox.showinfo("Información", "No hay registros de intermediación para reporte.", parent=win_informes)
+                return
+
+            rows_processed = []
+            for row in rows:
+                rs = list(row)
+                rows_processed.append({
+                    "Cédula": rs[0],
+                    "Cliente": rs[1],
+                    "Fecha Cita": rs[2],
+                    "Informe Cita": rs[3],
+                    "Fecha Desembolso": rs[4],
+                    "Descripción Informe": rs[5]
+                })
+
+            df = pd.DataFrame(rows_processed)
+            
+            filename = filedialog.asksaveasfilename(title="Guardar Reporte Intermediación", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Reporte_Intermediacion_{datetime.datetime.now().strftime('%Y%m%d')}", parent=win_informes)
+            
+            if filename:
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Intermediacion')
+                workbook  = writer.book
+                worksheet = writer.sheets['Intermediacion']
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#AED6F1', 'border': 1}) # Azul claro
+                
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, max(len(str(value)), 15) + 2)
+                    
+                writer.close()
+                messagebox.showinfo("Éxito", "Reporte de Intermediación exportado correctamente.", parent=win_informes)
+                win_informes.lift()
+                win_informes.focus_force()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al exportar intermediación: {e}", parent=win_informes)
+
+    def exportar_rehabilitacion_excel():
+        """Exporta el reporte de Rehabilitación."""
+        try:
+            with db_connection() as (conn, cursor):
+                query = """
+                    SELECT
+                        r.cedula_cliente,
+                        c.nombre,
+                        r.fecha_inicio,
+                        r.terminos,
+                        r.resultado,
+                        r.finalizado
+                    FROM Rehabilitacion r
+                    LEFT JOIN Clientes c ON r.cedula_cliente = c.cedula
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+            if not rows:
+                messagebox.showinfo("Información", "No hay registros de rehabilitación para reporte.", parent=win_informes)
+                return
+
+            rows_processed = []
+            for row in rows:
+                rs = list(row)
+                rows_processed.append({
+                    "Cédula": rs[0],
+                    "Cliente": rs[1],
+                    "Fecha Inicio": rs[2],
+                    "Términos": rs[3],
+                    "Resultado": rs[4],
+                    "Finalizado": "Sí" if rs[5] == 1 else "No"
+                })
+
+            df = pd.DataFrame(rows_processed)
+            
+            filename = filedialog.asksaveasfilename(title="Guardar Reporte Rehabilitación", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")], initialfile=f"Reporte_Rehabilitacion_{datetime.datetime.now().strftime('%Y%m%d')}", parent=win_informes)
+            
+            if filename:
+                writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+                df.to_excel(writer, index=False, sheet_name='Rehabilitacion')
+                workbook  = writer.book
+                worksheet = writer.sheets['Rehabilitacion']
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#F5B7B1', 'border': 1}) # Rojo claro
+                
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, max(len(str(value)), 15) + 2)
+                    
+                writer.close()
+                messagebox.showinfo("Éxito", "Reporte de Rehabilitación exportado correctamente.", parent=win_informes)
+                win_informes.lift()
+                win_informes.focus_force()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al exportar rehabilitación: {e}", parent=win_informes)
+
+    ctk.CTkButton(btn_container, text="🤝 EXCEL INTERMEDIACIÓN", command=exportar_intermediacion_excel, 
+                  font=('Arial', 14, 'bold'), fg_color="#3498DB", hover_color="#2980B9", height=50, width=250).grid(row=2, column=0, padx=20, pady=10)
+
+    ctk.CTkButton(btn_container, text="🏥 EXCEL REHABILITACIÓN", command=exportar_rehabilitacion_excel, 
+                  font=('Arial', 14, 'bold'), fg_color="#E74C3C", hover_color="#C0392B", height=50, width=250).grid(row=2, column=1, padx=20, pady=10)
 
     # Logo (Panel Derecho - Estandarizado con Documentos y Clientes)
     try:
@@ -6416,6 +6847,169 @@ def abrir_modulo_caja():
         finally:
             db_manager.release_connection(conn)
 
+    def generar_recibo_buro(monto_pago, nombre_cli, ced_cli, window_ref):
+        try:
+            fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            html_content = f"""
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Helvetica, sans-serif; font-size: 12px; }}
+                    .header {{ text-align: center; margin-bottom: 20px; }}
+                    .title {{ font-size: 16px; font-weight: bold; }}
+                    .info {{ margin-bottom: 5px; }}
+                    .total {{ font-size: 14px; font-weight: bold; margin-top: 10px; border-top: 1px dashed black; padding-top: 5px; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="title">RECIBO DE COBRO - BURÓ</div>
+                    <div>ALIANZA C3F</div>
+                    <div>{fecha_hoy}</div>
+                </div>
+                
+                <div class="info"><strong>Cliente:</strong> {nombre_cli}</div>
+                <div class="info"><strong>Cédula:</strong> {ced_cli}</div>
+                <div class="info"><strong>Concepto:</strong> Pago de Buró de Crédito</div>
+                <div class="info"><strong>Atendido por:</strong> {USUARIO_ACTIVO}</div>
+                
+                <hr>
+                
+                <div class="total">
+                    <table style="width: 100%;">
+                        <tr>
+                            <td>TOTAL PAGADO:</td>
+                            <td style="text-align: right;">$ {monto_pago:.2f}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <br><br>
+                <div style="text-align: center;">__________________________<br>Firma Cajero</div>
+            </body>
+            </html>
+            """
+            
+            carpeta = "Recibos_Buro"
+            if not os.path.exists(carpeta):
+                os.makedirs(carpeta)
+                
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"ReciboBuro_{ced_cli}_{timestamp}.pdf"
+            path = os.path.abspath(os.path.join(carpeta, filename))
+            
+            with open(path, "w+b") as result_file:
+                pisa_status = pisa.CreatePDF(html_content, dest=result_file)
+                
+            if pisa_status.err:
+                messagebox.showerror("Error PDF", "Error generando PDF", parent=window_ref)
+            else:
+                messagebox.showinfo("Éxito", "Recibo generado y guardado.", parent=window_ref)
+                os.startfile(path)
+                window_ref.destroy()
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error creando recibo: {e}", parent=window_ref)
+
+    def abrir_cobro_buro():
+        ident = var_cedula.get().strip() or var_ruc.get().strip()
+        nombre = var_nombres.get().strip()
+        
+        if not ident or not nombre:
+            messagebox.showwarning("Atención", "Primero cargue un cliente en la pantalla principal.")
+            return
+
+        t_buro = ctk.CTkToplevel(win)
+        t_buro.title("Cobro de Buró")
+        t_buro.geometry("500x450")
+        t_buro.resizable(False, False)
+        t_buro.grab_set()
+        t_buro.attributes('-topmost', True)
+        
+        ctk.CTkLabel(t_buro, text="GESTIÓN DE PAGO BURÓ", font=('Arial', 18, 'bold'), text_color="#1860C3").pack(pady=20)
+        
+        f_data = ctk.CTkFrame(t_buro, fg_color="transparent")
+        f_data.pack(padx=30, fill='x')
+        
+        # Fecha Actual
+        fecha_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        ctk.CTkLabel(f_data, text=f"Fecha: {fecha_now}", font=('Arial', 12, 'bold'), text_color="grey").pack(anchor='w', pady=(0, 10))
+
+        ctk.CTkLabel(f_data, text=f"Cliente: {nombre}", font=('Arial', 14)).pack(anchor='w')
+        ctk.CTkLabel(f_data, text=f"ID: {ident}", font=('Arial', 14)).pack(anchor='w', pady=(0, 15))
+        
+        ctk.CTkLabel(f_data, text="Monto a Cobrar ($):", font=('Arial', 14, 'bold')).pack(anchor='w')
+        e_monto = ctk.CTkEntry(f_data, font=('Arial', 16), width=200)
+        e_monto.pack(anchor='w', pady=5)
+        e_monto.focus_set()
+        
+        def on_focus_out_m(event):
+            val = e_monto.get().strip()
+            if val:
+                try:
+                    # Limpiar y formatear
+                    val_c = val.replace('$','').replace(',','')
+                    fv = float(val_c)
+                    e_monto.delete(0, tk.END)
+                    e_monto.insert(0, f"$ {fv:,.2f}")
+                except: pass
+        
+        e_monto.bind("<FocusOut>", on_focus_out_m)
+        e_monto.bind("<Return>", lambda e: btn_guardar.focus())
+
+        # Estado interno
+        var_monto_final = tk.DoubleVar(value=0.0)
+
+        def accion_guardar_cobro():
+            try:
+                val = e_monto.get().replace('$','').replace(',','').strip()
+                if not val: return
+                monto = float(val)
+                var_monto_final.set(monto)
+                
+                # Guardar en BD
+                conn, cursor = conectar_db()
+                try:
+                    fecha_pago = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    cursor.execute("""
+                        INSERT INTO PagosBuro (fecha, cedula_cliente, nombre_cliente, monto, usuario)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (fecha_pago, ident, nombre, monto, USUARIO_ACTIVO))
+                    conn.commit()
+                except Exception as e_bd:
+                    raise Exception(f"Error DB: {e_bd}")
+                finally:
+                    db_manager.release_connection(conn)
+
+                # Bloquear y habilitar imprimir
+                e_monto.configure(state='disabled')
+                btn_guardar.configure(state='disabled', fg_color="grey")
+                btn_imprimir.configure(state='normal', fg_color="#17a2b8")
+                
+                messagebox.showinfo("Guardado", "Cobro registrado correctamente. Ahora puede imprimir el recibo.", parent=t_buro)
+                
+            except ValueError:
+                messagebox.showerror("Error", "Ingrese un monto válido", parent=t_buro)
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar: {e}", parent=t_buro)
+
+        def accion_imprimir_recibo():
+            monto = var_monto_final.get()
+            if monto > 0:
+                generar_recibo_buro(monto, nombre, ident, t_buro)
+
+        f_btns = ctk.CTkFrame(t_buro, fg_color="transparent")
+        f_btns.pack(pady=30, padx=30, fill='x')
+
+        btn_guardar = ctk.CTkButton(f_btns, text="💾 GUARDAR", command=accion_guardar_cobro,
+                      font=('Arial', 12, 'bold'), height=40, fg_color="#28a745", hover_color="#218838")
+        btn_guardar.pack(side='left', fill='x', expand=True, padx=(0, 10))
+
+        btn_imprimir = ctk.CTkButton(f_btns, text="🖨️ IMPRIMIR RECIBO", command=accion_imprimir_recibo,
+                      font=('Arial', 12, 'bold'), height=40, fg_color="grey", state='disabled', hover_color="#138496")
+        btn_imprimir.pack(side='left', fill='x', expand=True, padx=(10, 0))
+
     def buscar_cliente_caja(event=None):
         ident = var_cedula.get().strip()
         if not ident:
@@ -6436,145 +7030,271 @@ def abrir_modulo_caja():
     var_buro.trace_add("write", lambda *a: validar_datos_caja())
 
     # --- PESTAÑA INFORMACIÓN ---
-    container_info = ctk.CTkFrame(frame_info, fg_color="white", corner_radius=15, border_width=1, border_color="#CCCCCC")
-    container_info.pack(fill='both', expand=True, padx=20, pady=20)
+    # --- PESTAÑA INFORMACIÓN ---
+    # 1. Contenedor Principal (Estilo Tarjeta)
+    frame_card = ctk.CTkFrame(frame_info, fg_color="white", corner_radius=20, border_width=1, border_color="#D5D8DC")
+    frame_card.pack(fill='both', expand=True, padx=40, pady=20)
     
-    # 0. BOTÓN PRINCIPAL RECAUDACIÓN (NUEVA UBICACIÓN)
-    f_info_actions = ctk.CTkFrame(container_info, fg_color="transparent")
-    f_info_actions.pack(pady=(20, 10))
+    # 2. Encabezado de Acción (Botones Side-by-Side: COBROS y GUARDAR)
+    # --- CONTENEDOR DE ACCIONES SUPERIOR ---
+    frame_acciones_top = tk.Frame(frame_card, bg="white")
+    frame_acciones_top.pack(fill='x', padx=30, pady=(20, 15)) # Usamos pack para consistencia con frame_card
+
+    # Definición de medidas en píxeles (aprox 1.5cm x 4cm)
+    ANCHO_PX = 151
+    ALTO_PX = 57
+
+    # Botón EXTRA: COBRO BURÓ (Morado) / Posición inicial izquierda
+    container_buro = tk.Frame(frame_acciones_top, width=ANCHO_PX, height=ALTO_PX, bg="white")
+    container_buro.pack_propagate(False)
+    container_buro.pack(side="left", padx=(0, 10))
+
+    btn_buro = tk.Button(container_buro, 
+                        text="💳 COBRO BURÓ", 
+                        bg="#6f42c1", 
+                        fg="white", 
+                        font=("Arial", 9, "bold"),
+                        borderwidth=3, 
+                        relief="raised",
+                        command=abrir_cobro_buro)
+    btn_buro.pack(fill="both", expand=True)
+
+    # Botón 1: IR A RECAUDACIÓN / COBROS (Naranja)
+    container_recaudacion = tk.Frame(frame_acciones_top, width=ANCHO_PX, height=ALTO_PX, bg="white")
+    container_recaudacion.pack_propagate(False) # Evita que el frame se encoja
+    container_recaudacion.pack(side="left", padx=(0, 10)) # Alineado a la izquierda
+
+    btn_recaudacion = tk.Button(container_recaudacion, 
+                                text="💰 COBROS", 
+                                bg="#f39c12", 
+                                fg="white", 
+                                font=("Arial", 9, "bold"),
+                                borderwidth=3, 
+                                relief="raised",
+                                command=abrir_ventana_recaudacion)
+    btn_recaudacion.pack(fill="both", expand=True)
+
+    # Botón 2: GUARDAR / MODIFICAR (Verde)
+    container_guardar = tk.Frame(frame_acciones_top, width=ANCHO_PX, height=ALTO_PX, bg="white")
+    container_guardar.pack_propagate(False)
+    container_guardar.pack(side="left", padx=10)
+
+    btn_guardar_caja = tk.Button(container_guardar, 
+                                text="💾 GUARDAR", 
+                                bg="#28a745", 
+                                fg="white", 
+                                font=("Arial", 9, "bold"),
+                                borderwidth=3, 
+                                relief="raised",
+                                command=guardar_caja)
+    btn_guardar_caja.pack(fill="both", expand=True)
     
-    ctk.CTkButton(f_info_actions, text="💰 IR A RECAUDACIÓN / COBROS", command=abrir_ventana_recaudacion,
-                  font=('Arial', 16, 'bold'), height=50, width=300, 
-                  fg_color="#F39C12", hover_color="#D68910").pack()
+    # Texto descriptivo debajo
+    ctk.CTkLabel(frame_card, text="Gestione cobros y guarde cambios desde la barra superior", 
+                 text_color="grey", font=('Arial', 10)).pack(pady=(0, 10))
+
+    # 3. Distribución del Formulario (2 Columnas)
+    grid_info = ctk.CTkFrame(frame_card, fg_color="transparent")
+    grid_info.pack(fill='both', expand=True, padx=30, pady=10)
     
-    grid_info = ctk.CTkFrame(container_info, fg_color="transparent")
-    grid_info.pack(padx=20, pady=20)
+    grid_info.grid_columnconfigure(0, weight=1)
+    grid_info.grid_columnconfigure(1, weight=1)
     
-    row = 0
-    ctk.CTkLabel(grid_info, text="Fecha y Hora:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    e_fecha_info = ctk.CTkEntry(grid_info, textvariable=var_fecha_hora, width=350, state='normal', fg_color="#F9F9F9", text_color="black")
-    e_fecha_info.grid(row=row, column=1, padx=20, pady=10)
+    # --- COLUMNA 0: DATOS CLIENTE ---
+    col_left = ctk.CTkFrame(grid_info, fg_color="transparent")
+    col_left.grid(row=0, column=0, sticky='nsew', padx=(0, 15))
     
-    row += 1
-    ctk.CTkLabel(grid_info, text="Cédula:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    e_ced = ctk.CTkEntry(grid_info, textvariable=var_cedula, width=350, fg_color="white", text_color="black")
-    e_ced.grid(row=row, column=1, padx=20, pady=10)
+    # Fecha
+    ctk.CTkLabel(col_left, text="Fecha y Hora:", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
+    e_fecha_info = ctk.CTkEntry(col_left, textvariable=var_fecha_hora, height=35, state='normal', fg_color="#F9F9F9", text_color="black")
+    e_fecha_info.pack(fill='x', pady=(0, 10))
+    
+    # Cédula
+    ctk.CTkLabel(col_left, text="Cédula:", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
+    e_ced = ctk.CTkEntry(col_left, textvariable=var_cedula, height=35, fg_color="white", text_color="black")
+    e_ced.pack(fill='x', pady=(0, 10))
     e_ced.bind('<KeyRelease>', buscar_cliente_caja)
     
-    row += 1
-    ctk.CTkLabel(grid_info, text="RUC:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    e_ruc = ctk.CTkEntry(grid_info, textvariable=var_ruc, width=350, fg_color="white", text_color="black")
-    e_ruc.grid(row=row, column=1, padx=20, pady=10)
+    # RUC
+    ctk.CTkLabel(col_left, text="RUC:", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
+    e_ruc = ctk.CTkEntry(col_left, textvariable=var_ruc, height=35, fg_color="white", text_color="black")
+    e_ruc.pack(fill='x', pady=(0, 5))
     
-    # Botón Flotante (o en grid) de "Crear Nuevo"
-    # Lo ubicamos en la misma columna 1, en una fila intermedia o superpuesto
-    # Mejor en el grid, en la siguiente fila del RUC
-    
-    btn_crear_nuevo = ctk.CTkButton(grid_info, text="🆕 CREAR NUEVO CLIENTE", command=preparar_nuevo_cliente, 
+    # Botón Crear Nuevo (Debajo de RUC)
+    btn_crear_nuevo = ctk.CTkButton(col_left, text="🆕 CREAR NUEVO CLIENTE", command=preparar_nuevo_cliente, 
                                     fg_color="#00C853", hover_color="#009624", font=("Arial", 12, "bold"))
-    # Inicialmente oculto. Se muestra si no se encuentra.
-    # Lo ubicamos en (row+1, 1) pero sin incrementar row global para no descuadrar si está oculto
-    btn_crear_nuevo.grid(row=row+1, column=1, pady=5)
-    btn_crear_nuevo.grid_remove() 
+    # Inicialmente oculto, usamos pack_forget. La lógica existente usa grid_remove/grid. 
+    # Para compatibilidad, usamos grid dentro de un frame contenedor si fuera necesario, 
+    # pero pack_forget es safe si lo re-packeamos. 
+    # AJUSTE: La logica heredada usa .grid(). Para evitar errores, pondre este boton en un frame interno con grid.
     
-    # Inicializar estados
+    f_btn_nuevo_wrapper = ctk.CTkFrame(col_left, fg_color="transparent", height=1)
+    f_btn_nuevo_wrapper.pack(fill='x', pady=5)
+    btn_crear_nuevo = ctk.CTkButton(f_btn_nuevo_wrapper, text="🆕 CREAR NUEVO CLIENTE", command=preparar_nuevo_cliente, 
+                                    fg_color="#00C853", hover_color="#009624", font=("Arial", 12, "bold"))
+    btn_crear_nuevo.grid(row=0, column=0, sticky='ew') 
+    f_btn_nuevo_wrapper.grid_columnconfigure(0, weight=1)
+    btn_crear_nuevo.grid_remove() # Estado inicial oculto compatible con lógica vieja
+    
+    # Inicializar estados Id
     toggle_id_fields()
     
-    row += 1 # Espacio para el botón aunque esté hidden consume 'index', mejor sumamos row
-    row += 1
-    ctk.CTkLabel(grid_info, text="Nombres Completos:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    e_nombres = ctk.CTkEntry(grid_info, textvariable=var_nombres, width=350, fg_color="white", text_color="black")
-    e_nombres.grid(row=row, column=1, padx=20, pady=10)
+    # Nombres
+    ctk.CTkLabel(col_left, text="Nombres Completos:", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
+    e_nombres = ctk.CTkEntry(col_left, textvariable=var_nombres, height=35, width=350, fg_color="white", text_color="black")
+    e_nombres.pack(fill='x', pady=(0, 10))
     
-    row += 1
-    ctk.CTkLabel(grid_info, text="Nombre del Asesor:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    e_asesor = ctk.CTkEntry(grid_info, textvariable=var_asesor, width=350, fg_color="white", text_color="black")
-    e_asesor.grid(row=row, column=1, padx=20, pady=10)
+    # --- COLUMNA 1: DATOS OPERATIVOS ---
+    col_right = ctk.CTkFrame(grid_info, fg_color="transparent")
+    col_right.grid(row=0, column=1, sticky='nsew', padx=(15, 0))
     
-    row += 1
-    ctk.CTkLabel(grid_info, text="¿Buró de Crédito?", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    cb_buro = ctk.CTkComboBox(grid_info, values=["Sí", "No"], variable=var_buro, command=toggle_buro_btn, width=100)
-    cb_buro.grid(row=row, column=1, sticky='w', padx=20, pady=10)
-    btn_adjuntar = ctk.CTkButton(grid_info, text="📎 Adjuntar Buró (PDF/IMG)", command=seleccionar_archivo_buro, state="disabled", fg_color="grey")
-    btn_adjuntar.grid(row=row, column=1, padx=(130, 0), pady=10)
+    # Asesor
+    ctk.CTkLabel(col_right, text="Nombre del Asesor:", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
+    e_asesor = ctk.CTkEntry(col_right, textvariable=var_asesor, height=35, fg_color="white", text_color="black")
+    e_asesor.pack(fill='x', pady=(0, 10))
     
-    row += 1
-    ctk.CTkLabel(grid_info, text="Observaciones:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=10)
-    e_obs = ctk.CTkEntry(grid_info, textvariable=var_observaciones, width=350, fg_color="white", text_color="black")
-    e_obs.grid(row=row, column=1, padx=20, pady=10)
+    # Buró
+    ctk.CTkLabel(col_right, text="¿Buró de Crédito?", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
+    f_buro = ctk.CTkFrame(col_right, fg_color="transparent")
+    f_buro.pack(fill='x', pady=(0, 10))
     
-    row += 1
-    btn_guardar_caja = ctk.CTkButton(container_info, text="💾 GUARDAR / MODIFICAR", command=guardar_caja, font=('Arial', 14, 'bold'), height=45, fg_color="#28a745", hover_color="#218838")
-    btn_guardar_caja.pack(pady=20)
+    cb_buro = ctk.CTkComboBox(f_buro, values=["Sí", "No"], variable=var_buro, command=toggle_buro_btn, width=100, height=35)
+    cb_buro.pack(side='left')
+    
+    btn_adjuntar = ctk.CTkButton(f_buro, text="📎 Adjuntar Buró (PDF/IMG)", command=seleccionar_archivo_buro, state="disabled", fg_color="grey", height=35)
+    btn_adjuntar.pack(side='left', padx=(10, 0), fill='x', expand=True)
+    
+    # Observaciones
+    ctk.CTkLabel(col_right, text="Observaciones:", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
+    e_obs = ctk.CTkEntry(col_right, textvariable=var_observaciones, height=35, fg_color="white", text_color="black")
+    e_obs.pack(fill='x', pady=(0, 10))
+    
+    # Botón Guardar (ELIMINADO - MOVIDO ARRIBA)
+    # Se eliminó de aquí porque ahora está en el frame_acciones_top.
     
     # --- PESTAÑA CONTRATO ---
     nb.add("Contrato")
     tab_con = nb.tab("Contrato")
-    container_con = ctk.CTkFrame(tab_con, fg_color="white", corner_radius=15, border_width=1, border_color="#CCCCCC")
-    container_con.pack(fill='both', expand=True, padx=20, pady=20)
     
-    # Grid scrollable or simple frame? User wants a specific order.
-    grid_con = ctk.CTkFrame(container_con, fg_color="transparent")
-    grid_con.pack(padx=20, pady=10)
+    # 1. Contenedor Principal (Hoja Digital - Scrollable)
+    # Cambiamos a ScrollableFrame para evitar que los botones se corten si la pantalla es pequeña
+    frame_doc = ctk.CTkScrollableFrame(tab_con, fg_color="white", corner_radius=15, border_width=1, border_color="#D5D8DC")
+    frame_doc.pack(fill='both', expand=True, padx=40, pady=20)
     
-    row = 0
-    ctk.CTkLabel(grid_con, text="Fecha Contrato:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_fecha_con = ctk.CTkEntry(grid_con, textvariable=var_fecha_contrato, width=350, state='normal', fg_color="#F9F9F9", text_color="black")
-    e_fecha_con.grid(row=row, column=1, padx=20, pady=5)
+    # 2. Encabezado de Acciones (Botones arriba en lugar de título)
+    frame_acciones_top = ctk.CTkFrame(frame_doc, fg_color="transparent")
+    # Usamos pack para consistencia con frame_doc que es scrollable y usa pack para hijos
+    frame_acciones_top.pack(fill='x', pady=(10, 20), padx=20) 
     
-    row += 1
-    ctk.CTkLabel(grid_con, text="Cédula:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_cedula, width=350, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    # Etiqueta opcional a la izquierda
+    lbl_acciones = ctk.CTkLabel(frame_acciones_top, text="Acciones del Contrato:", font=("Arial", 12, "bold"), text_color="gray")
+    lbl_acciones.pack(side="left", padx=10)
     
-    row += 1
-    ctk.CTkLabel(grid_con, text="RUC:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_ruc, width=350, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
+    # Botón Imprimir a la derecha
+    btn_imprimir_con = ctk.CTkButton(frame_acciones_top, text="🖨️ IMPRIMIR CONTRATO", command=imprimir_contrato, 
+                                     font=('Arial', 14, 'bold'), height=57, width=246,
+                                     border_width=3, border_color="#1B4F72",
+                                     fg_color="#2874A6", hover_color="#21618C", state='disabled')
+    btn_imprimir_con.pack(side="right", padx=15)
     
-    row += 1
-    ctk.CTkLabel(grid_con, text="Nombres y Apellidos:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    ctk.CTkEntry(grid_con, textvariable=var_nombres, width=350, state='readonly', fg_color="#F0F0F0", text_color="black").grid(row=row, column=1, padx=20, pady=5)
-    
-    row += 1
-    ctk.CTkLabel(grid_con, text="Correo Electrónico:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_email_con = ctk.CTkEntry(grid_con, textvariable=var_email, width=350, fg_color="white", text_color="black")
-    e_email_con.grid(row=row, column=1, padx=20, pady=5)
-    
-    row += 1
-    ctk.CTkLabel(grid_con, text="Dirección Domicilio:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_dir_con = ctk.CTkEntry(grid_con, textvariable=var_direccion, width=350, fg_color="white", text_color="black")
-    e_dir_con.grid(row=row, column=1, padx=20, pady=5)
-    
-    row += 1
-    ctk.CTkLabel(grid_con, text="Teléfono:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_tel_con = ctk.CTkEntry(grid_con, textvariable=var_telefono, width=350, fg_color="white", text_color="black")
-    e_tel_con.grid(row=row, column=1, padx=20, pady=5)
-    
-    row += 1
-    ctk.CTkLabel(grid_con, text="Estado Civil:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    cb_civil_con = ctk.CTkComboBox(grid_con, values=["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"], variable=var_estado_civil, width=200)
-    cb_civil_con.grid(row=row, column=1, sticky='w', padx=20, pady=5)
+    # --- CARGAR ÍCONO GUARDAR ---
+    img_save_icon = None
+    try:
+        icon_path = resource_path("icono_guardar.png")
+        if os.path.exists(icon_path):
+           img_save_icon = ctk.CTkImage(light_image=Image.open(icon_path),
+                                        dark_image=Image.open(icon_path),
+                                        size=(227, 50))
+    except Exception as e:
+        print(f"Error loading icon: {e}")
 
-    row += 1
-    ctk.CTkLabel(grid_con, text="Valor de Apertura ($):", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_val_ape_con = ctk.CTkEntry(grid_con, textvariable=var_valor_apertura, width=350, fg_color="white", text_color="black")
-    e_val_ape_con.grid(row=row, column=1, sticky='w', padx=20, pady=5)
+    # Botón Guardar (Icono Full Size)
+    if img_save_icon:
+        btn_guardar_con = ctk.CTkButton(
+            master=frame_acciones_top,
+            text="",                    # SE ELIMINA EL TEXTO
+            image=img_save_icon,        # La imagen llena todo
+            fg_color="transparent",     # Fondo invisible
+            hover_color=None,           # SIN color al pasar el mouse
+            width=227,                  # Ancho total
+            height=50,                  # Alto total (aprox 1.3cm)
+            border_width=0,
+            corner_radius=0,            # Sin bordes redondeados
+            command=guardar_datos_contrato
+        )
+        btn_guardar_con.pack(side="right", padx=10)
+    else:
+        # Fallback si falla la imagen
+        btn_guardar_con = ctk.CTkButton(frame_acciones_top, text="💾", command=guardar_datos_contrato, 
+                                        font=('Arial', 20, 'bold'), height=57, width=60,
+                                        fg_color="#27AE60", hover_color="#219150")
+        btn_guardar_con.pack(side="right", padx=15)
+    
+    # 3. Cuerpo del Formulario (Grid 2 Columnas)
+    grid_con = ctk.CTkFrame(frame_doc, fg_color="transparent")
+    grid_con.pack(fill='x', expand=False, padx=20, pady=10) # Ajuste: expand=False para no empujar el footer
+    grid_con.grid_columnconfigure(0, weight=1)
+    grid_con.grid_columnconfigure(1, weight=1)
+    
+    # --- COLUMNA 0: DATOS DEL CLIENTE ---
+    col_c_left = ctk.CTkFrame(grid_con, fg_color="transparent")
+    col_c_left.grid(row=0, column=0, sticky='nsew', padx=(0, 15))
+    
+    # Cédula
+    ctk.CTkLabel(col_c_left, text="Cédula:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    ctk.CTkEntry(col_c_left, textvariable=var_cedula, height=35, state='readonly', fg_color="#F8F9F9", text_color="black").pack(fill='x', pady=(0, 10))
+    
+    # Nombres
+    ctk.CTkLabel(col_c_left, text="Nombres y Apellidos:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    ctk.CTkEntry(col_c_left, textvariable=var_nombres, height=35, state='readonly', fg_color="#F8F9F9", text_color="black").pack(fill='x', pady=(0, 10))
+    
+    # Email
+    ctk.CTkLabel(col_c_left, text="Correo Electrónico:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    e_email_con = ctk.CTkEntry(col_c_left, textvariable=var_email, height=35, fg_color="#F8F9F9", text_color="black")
+    e_email_con.pack(fill='x', pady=(0, 10))
+    
+    # Dirección
+    ctk.CTkLabel(col_c_left, text="Dirección Domicilio:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    e_dir_con = ctk.CTkEntry(col_c_left, textvariable=var_direccion, height=35, fg_color="#F8F9F9", text_color="black")
+    e_dir_con.pack(fill='x', pady=(0, 10))
+    
+    # Teléfono
+    ctk.CTkLabel(col_c_left, text="Teléfono:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    e_tel_con = ctk.CTkEntry(col_c_left, textvariable=var_telefono, height=35, fg_color="#F8F9F9", text_color="black")
+    e_tel_con.pack(fill='x', pady=(0, 10))
+    
+    # Estado Civil
+    ctk.CTkLabel(col_c_left, text="Estado Civil:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    cb_civil_con = ctk.CTkComboBox(col_c_left, values=["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"], variable=var_estado_civil, height=35)
+    cb_civil_con.pack(fill='x', pady=(0, 10))
+    
+    # --- COLUMNA 1: DATOS DEL CONTRATO ---
+    col_c_right = ctk.CTkFrame(grid_con, fg_color="transparent")
+    col_c_right.grid(row=0, column=1, sticky='nsew', padx=(15, 0))
+    
+    # Fecha Contrato
+    ctk.CTkLabel(col_c_right, text="Fecha Contrato:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    e_fecha_con = ctk.CTkEntry(col_c_right, textvariable=var_fecha_contrato, height=35, state='normal', fg_color="#F8F9F9", text_color="black")
+    e_fecha_con.pack(fill='x', pady=(0, 10))
+    
+    # RUC
+    ctk.CTkLabel(col_c_right, text="RUC:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    ctk.CTkEntry(col_c_right, textvariable=var_ruc, height=35, state='readonly', fg_color="#F8F9F9", text_color="black").pack(fill='x', pady=(0, 10))
+    
+    # Valor Apertura
+    ctk.CTkLabel(col_c_right, text="Valor de Apertura ($):", font=('Arial', 12, 'bold'), text_color="#2874A6").pack(anchor='w', pady=(5,0))
+    e_val_ape_con = ctk.CTkEntry(col_c_right, textvariable=var_valor_apertura, height=35, fg_color="#F8F9F9", text_color="black", font=('Arial', 12))
+    e_val_ape_con.pack(fill='x', pady=(0, 10))
     e_val_ape_con.bind('<FocusOut>', on_focus_out_moneda)
     e_val_ape_con.bind('<FocusIn>', on_focus_in_moneda)
     
-    row += 1
-    ctk.CTkLabel(grid_con, text="No. de Apertura:", font=('Arial', 12, 'bold'), text_color="black").grid(row=row, column=0, sticky='w', pady=5)
-    e_num_ape_con = ctk.CTkEntry(grid_con, textvariable=var_num_apertura, width=350, state='readonly', fg_color="#F0F0F0", text_color="black")
-    e_num_ape_con.grid(row=row, column=1, padx=20, pady=5)
+    # No Apertura
+    ctk.CTkLabel(col_c_right, text="No. de Apertura:", font=('Arial', 11, 'bold'), text_color="#566573").pack(anchor='w', pady=(5,0))
+    e_num_ape_con = ctk.CTkEntry(col_c_right, textvariable=var_num_apertura, height=35, state='readonly', fg_color="#EBF5FB", text_color="#2874A6")
+    e_num_ape_con.pack(fill='x', pady=(0, 10))
     
-    row += 1
-    btn_frame_con = ctk.CTkFrame(container_con, fg_color="transparent")
-    btn_frame_con.pack(pady=20)
-
-    btn_guardar_con = ctk.CTkButton(btn_frame_con, text="💾 GUARDAR DATOS CONTRATO", command=guardar_datos_contrato, font=('Arial', 14, 'bold'), height=45, fg_color="#28a745", hover_color="#218838")
-    btn_guardar_con.pack(side='left', padx=10)
-    
-    btn_imprimir_con = ctk.CTkButton(btn_frame_con, text="🖨️ IMPRIMIR CONTRATO", command=imprimir_contrato, font=('Arial', 14, 'bold'), height=45, fg_color="#1860C3", state='disabled')
-    btn_imprimir_con.pack(side='left', padx=10)
+    # Buttons moved to top
+    pass
     
     # 3. Recaudacion: MOVIDO A PESTAÑA INFORMACIÓN
 

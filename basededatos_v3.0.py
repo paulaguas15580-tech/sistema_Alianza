@@ -6967,431 +6967,262 @@ def abrir_modulo_caja():
             messagebox.showerror("Error", f"Error creando recibo: {e}", parent=window_ref)
 
     def abrir_cobro_buro():
-        ident = var_cedula.get().strip() or var_ruc.get().strip()
-        nombre = var_nombres.get().strip()
+        # Verificar selección de cliente (USANDO VARIABLES DE CAJA, NO TREEVIEW)
+        cliente_cedula = var_cedula.get().strip() or var_ruc.get().strip()
+        cliente_nombre = var_nombres.get().strip()
         
-        if not ident or not nombre:
-            messagebox.showwarning("Atención", "Primero cargue un cliente en la pantalla principal.")
+        if not cliente_cedula or not cliente_nombre:
+            messagebox.showwarning("Atención", "Por favor, busque y cargue un cliente primero.")
             return
 
-        t_buro = ctk.CTkToplevel(win)
-        t_buro.title("Cobro de Buró - Pago Mixto")
-        t_buro.geometry("850x550")
-        t_buro.resizable(False, False)
-        t_buro.grab_set()
-        t_buro.attributes('-topmost', True)
-        
-        ctk.CTkLabel(t_buro, text="GESTIÓN DE PAGO MIXTO", font=('Arial', 24, 'bold'), text_color="#1860C3").pack(pady=20)
+        # Ventana Principal de Cobro
+        ventana_cobro = ctk.CTkToplevel()
+        ventana_cobro.title(f"Cobro de Buró - {cliente_nombre}")
+        ventana_cobro.geometry("900x650")
+        ventana_cobro.grab_set()  # Modal
+        ventana_cobro.focus_force()
 
-        # Main Layout: 2 Columns
-        f_main = ctk.CTkFrame(t_buro, fg_color="transparent")
-        f_main.pack(fill='both', expand=True, padx=20, pady=10)
-        
-        # Left Column: Info & Total
-        f_info = ctk.CTkFrame(f_main, fg_color="transparent")
-        f_info.pack(side='left', fill='both', expand=True, padx=(0, 20))
+        # --- Título ---
+        ctk.CTkLabel(ventana_cobro, text="GESTIÓN DE PAGO MIXTO", 
+                     font=("Arial", 20, "bold"), text_color="#154360").pack(pady=15)
 
-        # Right Column: Breakdown
-        f_breakdown = ctk.CTkFrame(f_main, fg_color="transparent")
-        f_breakdown.pack(side='right', fill='both', expand=True, padx=(20, 0))
+        # --- Frame Principal (2 Columnas) ---
+        frame_main = ctk.CTkFrame(ventana_cobro, fg_color="transparent")
+        frame_main.pack(fill="both", expand=True, padx=20)
 
-        # --- LEFT: INFO ---
-        fecha_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        
-        ctk.CTkLabel(f_info, text="DATOS DEL COBRO", font=('Arial', 16, 'bold', 'underline')).pack(anchor='w', pady=(0, 15))
-        
-        ctk.CTkLabel(f_info, text=f"Fecha: {fecha_now}", font=('Arial', 14, 'bold'), text_color="grey").pack(anchor='w', pady=(0, 5))
-        ctk.CTkLabel(f_info, text=f"Cliente: {nombre}", font=('Arial', 14)).pack(anchor='w')
-        ctk.CTkLabel(f_info, text=f"ID: {ident}", font=('Arial', 14)).pack(anchor='w', pady=(0, 20))
-        
-        ctk.CTkLabel(f_info, text="MONTO TOTAL A COBRAR ($):", font=('Arial', 18, 'bold')).pack(anchor='w', pady=(0, 5))
-        e_total = ctk.CTkEntry(f_info, font=('Arial', 20, 'bold'), placeholder_text="$ 0.00", height=40)
-        e_total.pack(fill='x', pady=5)
-        e_total.focus_set()
+        # ================= COLUMNA IZQUIERDA (DATOS) =================
+        frame_izq = ctk.CTkFrame(frame_main, fg_color="transparent")
+        frame_izq.pack(side="left", fill="both", expand=True, padx=10)
 
-        # --- RIGHT: BREAKDOWN (Grid 3x2) ---
-        f_grid = ctk.CTkFrame(f_breakdown)
-        f_grid.pack(fill='x', pady=10)
+        ctk.CTkLabel(frame_izq, text="DATOS DEL COBRO", font=("Arial", 14, "bold", "underline")).pack(anchor="w", pady=5)
         
-        # Storage for details
-        detalles_pagos = {
-            "EFECTIVO": "",
-            "TRANSFERENCIA": "",
-            "TARJETA": ""
-        }
+        ctk.CTkLabel(frame_izq, text=f"Fecha: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", text_color="gray").pack(anchor="w")
+        ctk.CTkLabel(frame_izq, text=f"Cliente: {cliente_nombre}", font=("Arial", 12, "bold")).pack(anchor="w")
+        ctk.CTkLabel(frame_izq, text=f"ID: {cliente_cedula}").pack(anchor="w", pady=(0, 20))
 
-        # --- POPUP FUNCTIONS ---
+        # MONTO TOTAL
+        ctk.CTkLabel(frame_izq, text="MONTO TOTAL A COBRAR ($):", font=("Arial", 14, "bold")).pack(anchor="w")
+        e_monto_total = ctk.CTkEntry(frame_izq, font=("Arial", 24), placeholder_text="0.00", height=40)
+        e_monto_total.pack(fill="x", pady=5)
 
-        def ventana_pago_efectivo():
-            v_pago = ctk.CTkToplevel(t_buro)
-            v_pago.title("Pago en Efectivo")
-            v_pago.geometry("300x200")
-            v_pago.grab_set()
-            v_pago.attributes('-topmost', True)
+        # ================= COLUMNA DERECHA (PAGOS) =================
+        frame_der = ctk.CTkFrame(frame_main, fg_color="#E5E7E9", corner_radius=10)
+        frame_der.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+
+        # Función auxiliar para crear filas de pago
+        def crear_fila_pago(master, texto_btn, color_btn, comando, row):
+            btn = ctk.CTkButton(master, text=texto_btn, fg_color=color_btn, width=140, command=comando)
+            btn.grid(row=row, column=0, padx=10, pady=10)
             
-            ctk.CTkLabel(v_pago, text="Monto Efectivo ($):", font=('Arial', 12, 'bold')).pack(pady=(20, 5))
-            e_monto_popup = ctk.CTkEntry(v_pago, placeholder_text="$ 0.00", width=150, justify='center')
-            e_monto_popup.pack(pady=5)
-            e_monto_popup.focus_set()
-            
-            def guardar_efectivo():
-                monto = e_monto_popup.get().replace('$','').replace(',','').strip()
-                if not monto: monto = "0.00"
+            entry = ctk.CTkEntry(master, placeholder_text="0.00", justify="right")
+            entry.grid(row=row, column=1, padx=10, pady=10, sticky="ew")
+            entry.insert(0, "0.00")
+            entry.configure(state="disabled") # Nacen bloqueados
+            return entry
+
+        # --- Funciones de Popups de Pago ---
+        def popup_valor(titulo, entry_destino):
+            dialog = ctk.CTkInputDialog(text=f"Ingrese valor para {titulo}:", title=titulo)
+            val = dialog.get_input()
+            if val:
                 try:
-                    val = float(monto)
-                    detalles_pagos["EFECTIVO"] = "Pago Efectivo" # Default detail
-                    
-                    # Update Main UI
-                    e_efectivo.configure(state='normal')
-                    e_efectivo.delete(0, tk.END)
-                    e_efectivo.insert(0, f"{val:.2f}")
-                    e_efectivo.configure(state='disabled')
-                    
-                    v_pago.destroy()
+                    float(val) # Validar número
+                    entry_destino.configure(state="normal")
+                    entry_destino.delete(0, 'end')
+                    entry_destino.insert(0, val)
+                    entry_destino.configure(state="disabled")
                 except ValueError:
-                    messagebox.showerror("Error", "Monto inválido", parent=v_pago)
+                    messagebox.showerror("Error", "Ingrese un número válido", parent=ventana_cobro)
 
-            ctk.CTkButton(v_pago, text="GUARDAR PAGO", fg_color="#28a745", command=guardar_efectivo).pack(pady=20)
+        # Campos de Pagos
+        e_efectivo = crear_fila_pago(frame_der, "💵 EFECTIVO", "#28B463", lambda: popup_valor("Efectivo", e_efectivo), 0)
+        e_transfer = crear_fila_pago(frame_der, "🏦 TRANSFERENCIA", "#2E86C1", lambda: popup_valor("Transferencia", e_transfer), 1)
+        e_tarjeta = crear_fila_pago(frame_der, "💳 TARJETA", "#E67E22", lambda: popup_valor("Tarjeta", e_tarjeta), 2)
 
-        def ventana_pago_transferencia():
-            v_pago = ctk.CTkToplevel(t_buro)
-            v_pago.title("Pago Transferencia")
-            v_pago.geometry("400x350")
-            v_pago.grab_set()
-            v_pago.attributes('-topmost', True)
-            
-            f_cont = ctk.CTkFrame(v_pago)
-            f_cont.pack(pady=10, padx=10, fill='both', expand=True)
-            
-            ctk.CTkLabel(f_cont, text="Institución / Banco:").pack(anchor='w', padx=10)
-            e_inst = ctk.CTkEntry(f_cont)
-            e_inst.pack(fill='x', padx=10, pady=(0, 5))
-
-            ctk.CTkLabel(f_cont, text="Monto ($):").pack(anchor='w', padx=10)
-            e_monto_transf_popup = ctk.CTkEntry(f_cont, placeholder_text="$ 0.00")
-            e_monto_transf_popup.pack(fill='x', padx=10, pady=(0, 5))
-            
-            ctk.CTkLabel(f_cont, text="N° Transacción:").pack(anchor='w', padx=10)
-            e_num = ctk.CTkEntry(f_cont)
-            e_num.pack(fill='x', padx=10, pady=(0, 5))
-            
-            def guardar_transfer():
-                monto = e_monto_transf_popup.get().replace('$','').replace(',','').strip()
-                if not monto: monto = "0.00"
-                
-                inst = e_inst.get().strip()
-                num = e_num.get().strip()
-                
-                try:
-                    val = float(monto)
-                    detalles_pagos["TRANSFERENCIA"] = f"Banco: {inst} | Ref: {num}"
-                    
-                    # Update Main UI
-                    e_transfer.configure(state='normal')
-                    e_transfer.delete(0, tk.END)
-                    e_transfer.insert(0, f"{val:.2f}")
-                    e_transfer.configure(state='disabled')
-                    
-                    v_pago.destroy()
-                except ValueError:
-                    messagebox.showerror("Error", "Monto inválido", parent=v_pago)
-            
-            ctk.CTkButton(f_cont, text="OK", fg_color="#1860C3", command=guardar_transfer).pack(pady=10)
-
-        def ventana_pago_tarjeta():
-            v_pago = ctk.CTkToplevel(t_buro)
-            v_pago.title("Pago Tarjeta")
-            v_pago.geometry("400x480") # Increased height for new fields
-            v_pago.grab_set()
-            v_pago.attributes('-topmost', True)
-            
-            f_cont = ctk.CTkFrame(v_pago)
-            f_cont.pack(pady=10, padx=10, fill='both', expand=True)
-
-            # A. Franquicia / Tarjeta
-            ctk.CTkLabel(f_cont, text="Franquicia / Tarjeta:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 0))
-            cmb_tarjeta = ctk.CTkComboBox(f_cont, values=['Visa', 'MasterCard', 'Diners Club', 'Discovery', 'Otros'])
-            cmb_tarjeta.pack(fill='x', padx=10, pady=(0, 10))
-            cmb_tarjeta.set("Visa")
-
-            # B. Monto
-            ctk.CTkLabel(f_cont, text="Monto a Cobrar ($):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 0))
-            e_monto_tarjeta_popup = ctk.CTkEntry(f_cont, placeholder_text="0.00", height=35)
-            e_monto_tarjeta_popup.pack(fill='x', padx=10, pady=(0, 10))
-
-            # C. No. Autorización
-            ctk.CTkLabel(f_cont, text="No. Autorización (Voucher):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 0))
-            e_auth = ctk.CTkEntry(f_cont)
-            e_auth.pack(fill='x', padx=10, pady=(0, 10))
-            
-            # D. No. Referencia
-            ctk.CTkLabel(f_cont, text="No. Referencia / Lote:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 0))
-            e_ref = ctk.CTkEntry(f_cont)
-            e_ref.pack(fill='x', padx=10, pady=(0, 15))
-            
-            def guardar_tarjeta():
-                monto_str = e_monto_tarjeta_popup.get().replace('$','').replace(',','').strip()
-                if not monto_str: monto_str = "0.00"
-                
-                franquicia = cmb_tarjeta.get()
-                auth = e_auth.get().strip()
-                ref = e_ref.get().strip()
-                
-                try:
-                    val = float(monto_str)
-                    if val <= 0:
-                        messagebox.showwarning("Monto Inválido", "El monto debe ser mayor a 0", parent=v_pago)
-                        return
-                    
-                    if not auth or not ref:
-                        messagebox.showwarning("Datos Incompletos", "Ingrese Autorización y Referencia", parent=v_pago)
-                        return
-
-                    # Store details for DB
-                    detalles_pagos["TARJETA"] = f"{franquicia} | Auth: {auth} | Ref: {ref}"
-                    
-                    # Update & Lock Main UI
-                    e_tarjeta.configure(state='normal')
-                    e_tarjeta.delete(0, tk.END)
-                    e_tarjeta.insert(0, f"{val:.2f}")
-                    e_tarjeta.configure(state='disabled')
-                    
-                    v_pago.destroy()
-                except ValueError:
-                    messagebox.showerror("Error", "Monto inválido", parent=v_pago)
-
-            ctk.CTkButton(f_cont, text="OK / GUARDAR", fg_color="#e67e22", hover_color="#d35400", 
-                          font=('Arial', 13, 'bold'), height=40,
-                          command=guardar_tarjeta).pack(pady=20, padx=10, fill='x')
-
-        # --- GRID UI ---
+        # ================= LÓGICA DE BOTONES =================
         
-        # Row 0: Cash
-        ctk.CTkButton(f_grid, text="💵 EFECTIVO", font=('Arial', 12, 'bold'), fg_color="#28a745", width=140,
-                      command=ventana_pago_efectivo).grid(row=0, column=0, padx=10, pady=10)
-        
-        e_efectivo = ctk.CTkEntry(f_grid, placeholder_text="0.00", justify='right')
-        e_efectivo.grid(row=0, column=1, padx=10, pady=10, sticky='ew')
-        e_efectivo.configure(state='disabled') # LOCK INITIAL
-        
-        # Row 1: Transfer
-        ctk.CTkButton(f_grid, text="🏦 TRANSFERENCIA", font=('Arial', 12, 'bold'), fg_color="#1860C3", width=140,
-                      command=ventana_pago_transferencia).grid(row=1, column=0, padx=10, pady=10)
-        
-        e_transfer = ctk.CTkEntry(f_grid, placeholder_text="0.00", justify='right')
-        e_transfer.grid(row=1, column=1, padx=10, pady=10, sticky='ew')
-        e_transfer.configure(state='disabled') # LOCK INITIAL
-        
-        # Row 2: Card
-        ctk.CTkButton(f_grid, text="💳 TARJETA", font=('Arial', 12, 'bold'), fg_color="#e67e22", width=140,
-                      command=ventana_pago_tarjeta).grid(row=2, column=0, padx=10, pady=10)
-        
-        e_tarjeta = ctk.CTkEntry(f_grid, placeholder_text="0.00", justify='right')
-        e_tarjeta.grid(row=2, column=1, padx=10, pady=10, sticky='ew')
-        e_tarjeta.configure(state='disabled') # LOCK INITIAL
+        # Declaraciones adelantadas de lógica
+        def logica_historial():
+            # 1. Obtener Cédula
+            cedula = cliente_cedula
+            if not cedula:
+                messagebox.showwarning("Atención", "No se detecta la cédula.")
+                return
 
-        # Auto-Formatting Helper
-        def clean_val(txt):
-            return txt.replace('$','').replace(',','').strip()
+            # 2. Configurar Ventana
+            # IMPORTANTE: Pasamos ventana_cobro como master para que sea hija directa
+            ventana_hist = ctk.CTkToplevel(ventana_cobro)
+            ventana_hist.title(f"Historial - {cedula}")
+            ventana_hist.geometry("1000x400")
+            
+            ventana_hist.lift()
+            ventana_hist.attributes('-topmost', True)
+            
+            # RE-HABILITAMOS GRAB_SET
+            # Es necesario para que los botones reciban clics cuando la ventana padre también es modal.
+            ventana_hist.grab_set() 
+            
+            ctk.CTkLabel(ventana_hist, text=f"HISTORIAL DE PAGOS: {cedula}", font=("Arial", 16, "bold"), text_color="#2E86C1").pack(pady=10)
 
-        def fmt_total(event):
+            # 3. Configurar Tabla
+            cols = ("Fecha", "Concepto", "Efectivo", "Transf", "Tarjeta", "Total")
+            tree = ttk.Treeview(ventana_hist, columns=cols, show="headings", height=10)
+            
+            encabezados = ["Fecha y Hora", "Concepto", "Efectivo", "Transferencia", "Tarjeta", "TOTAL"]
+            anchos = [140, 100, 90, 100, 90, 100]
+            
+            for i, col in enumerate(cols):
+                tree.heading(col, text=encabezados[i])
+                tree.column(col, width=anchos[i], anchor="center" if i < 2 else "e")
+            
+            tree.pack(fill="both", expand=True, padx=20, pady=10)
+
+            # 4. Consulta SQL
             try:
-                val = clean_val(e_total.get())
-                if val:
-                    e_total.delete(0, tk.END)
-                    e_total.insert(0, f"{float(val):.2f}")
-            except: pass
-        
-        e_total.bind("<FocusOut>", fmt_total)
-
-        # --- BOTTOM ACTION ---
-        var_monto_final = tk.DoubleVar(value=0.0)
-        
-        def reset_para_nuevo_cobro():
-            # 1. Limpiar Monto Total
-            e_total.configure(state='normal') # Re-enable if disabled
-            e_total.delete(0, tk.END)
-            e_total.focus_set()
-            
-            # 2. Resetear campos de métodos de pago a 0.00 y mantenerlos bloqueados
-            # Efectivo
-            e_efectivo.configure(state='normal')
-            e_efectivo.delete(0, tk.END)
-            e_efectivo.insert(0, "0.00")
-            e_efectivo.configure(state='disabled')
-            
-            # Transferencia
-            e_transfer.configure(state='normal')
-            e_transfer.delete(0, tk.END)
-            e_transfer.insert(0, "0.00")
-            e_transfer.configure(state='disabled')
-            
-            # Tarjeta
-            e_tarjeta.configure(state='normal')
-            e_tarjeta.delete(0, tk.END)
-            e_tarjeta.insert(0, "0.00")
-            e_tarjeta.configure(state='disabled')
-            
-            # 3. Limpiar diccionario de detalles
-            for k in detalles_pagos:
-                detalles_pagos[k] = ""
-
-            # 4. Reactivar el botón de Guardar
-            btn_procesar.configure(state="normal", text="💾 VALIDAR Y GUARDAR PAGO", fg_color="#1e7145") 
-            
-            # 5. Ocultar el botón de Nuevo Cobro
-            btn_nuevo_cobro.pack_forget()
-
-        def validar_y_guardar():
-            try:
-                # 1. Get Values (Note: Entry.get() works on disabled widgets in ctk)
-                str_total = clean_val(e_total.get())
-                total_deuda = float(str_total) if str_total else 0.0
+                conn = sqlite3.connect("Alianza_Backup_Local.db")
+                cursor = conn.cursor()
                 
-                if total_deuda <= 0:
-                    messagebox.showwarning("Monto Cero", "El monto total a cobrar debe ser mayor a 0.", parent=t_buro)
-                    return
-
-                str_ef = clean_val(e_efectivo.get())
-                pago_efectivo = float(str_ef) if str_ef else 0.0
-                
-                str_tr = clean_val(e_transfer.get())
-                pago_transfer = float(str_tr) if str_tr else 0.0
-                
-                str_tc = clean_val(e_tarjeta.get())
-                pago_tarjeta = float(str_tc) if str_tc else 0.0
-                
-                suma_pagos = pago_efectivo + pago_transfer + pago_tarjeta
-                
-                # 2. Compare Sum
-                diff = total_deuda - suma_pagos
-                if abs(diff) > 0.01:
-                    msg = f"La suma de los pagos (${suma_pagos:,.2f}) no coincide con el Total a Cobrar (${total_deuda:,.2f}).\n"
-                    if diff > 0:
-                        msg += f"Faltan: ${diff:,.2f}"
-                    else:
-                        msg += f"Sobran: ${abs(diff):,.2f}"
-                        
-                    messagebox.showerror("Error de Cuadre", msg, parent=t_buro)
-                    return
-                
-                # 3. Save to DB
-                conn, cursor = conectar_db()
-                try:
-                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    if pago_efectivo > 0:
-                        cursor.execute("INSERT INTO PagosBuro (fecha, cedula_cliente, nombre_cliente, monto, usuario, metodo, detalles) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                                       (ts, ident, nombre, pago_efectivo, USUARIO_ACTIVO, "EFECTIVO", detalles_pagos["EFECTIVO"]))
-                        
-                    if pago_transfer > 0:
-                        cursor.execute("INSERT INTO PagosBuro (fecha, cedula_cliente, nombre_cliente, monto, usuario, metodo, detalles) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                                       (ts, ident, nombre, pago_transfer, USUARIO_ACTIVO, "TRANSFERENCIA", detalles_pagos["TRANSFERENCIA"]))
-                        
-                    if pago_tarjeta > 0:
-                        cursor.execute("INSERT INTO PagosBuro (fecha, cedula_cliente, nombre_cliente, monto, usuario, metodo, detalles) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                                       (ts, ident, nombre, pago_tarjeta, USUARIO_ACTIVO, "TARJETA", detalles_pagos["TARJETA"]))
-                        
-                    conn.commit()
-                    
-                    messagebox.showinfo("Éxito", "Pago registrado y cuadrado correctamente.", parent=t_buro)
-                    
-                    var_monto_final.set(total_deuda)
-                    
-                    # UI Update locks
-                    e_total.configure(state='disabled')
-                    btn_procesar.configure(state='disabled', text="✅ COBRO GUARDADO (BLOQUEADO)", fg_color="gray")
-                    btn_imprimir.configure(state='normal', fg_color="#17a2b8")
-                    
-                    # Show New Charge Button
-                    btn_nuevo_cobro.pack(fill="x", pady=10)
-                    
-                    
-                except Exception as e_bd:
-                    raise Exception(f"Buro DB Error: {e_bd}")
-                finally:
-                    db_manager.release_connection(conn)
-
-            except ValueError:
-                messagebox.showerror("Error", "Por favor ingrese solo números válidos.", parent=t_buro)
-
-        def accion_imprimir_recibo():
-            monto = var_monto_final.get()
-            
-            # Obtener valores desglosados (limpiando formato)
-            ef = float(clean_val(e_efectivo.get()) or 0)
-            tr = float(clean_val(e_transfer.get()) or 0)
-            tc = float(clean_val(e_tarjeta.get()) or 0)
-            
-            if monto > 0:
-                generar_recibo_buro(monto, nombre, ident, t_buro, efectivo=ef, transferencia=tr, tarjeta=tc)
-
-        # 2. Main Process Button
-        btn_procesar = ctk.CTkButton(t_buro, text="💾 VALIDAR Y GUARDAR PAGO", font=('Arial', 16, 'bold'),
-                                     height=50, fg_color="#1e7145", hover_color="#155d37",
-                                     command=validar_y_guardar)
-        btn_procesar.pack(fill='x', padx=30, pady=(10, 5))
-        
-        btn_imprimir = ctk.CTkButton(t_buro, text="🖨️ IMPRIMIR RECIBO (TOTAL)", font=('Arial', 14, 'bold'),
-                                     height=40, fg_color="grey", state='disabled', hover_color="#138496",
-                                     command=accion_imprimir_recibo)
-        btn_imprimir.pack(fill='x', padx=30, pady=(5, 10))
-
-        # Botón Nuevo Cobro (Initially Hidden)
-        btn_nuevo_cobro = ctk.CTkButton(t_buro, text="🔄 REALIZAR OTRO COBRO AL MISMO CLIENTE", font=('Arial', 14, 'bold'),
-                                      height=45, fg_color="#2874A6", hover_color="#1B4F72",
-                                      command=reset_para_nuevo_cobro)
-
-        # --- AUTO-LOAD LAST CHARGE LOGIC ---
-        conn, cursor = conectar_db()
-        try:
-            # A. Get Latest Timestamp for this client
-            cursor.execute("SELECT MAX(fecha) FROM PagosBuro WHERE cedula_cliente=%s", (ident,))
-            res_date = cursor.fetchone()
-            last_date = res_date[0] if res_date else None
-            
-            if last_date:
-                # B. Get details for that timestamp
-                cursor.execute("SELECT metodo, monto FROM PagosBuro WHERE cedula_cliente=%s AND fecha=%s", (ident, last_date))
+                # Seleccionamos los datos de PagosBuro
+                sql = """
+                    SELECT fecha, hora, 
+                           COALESCE(pago_efectivo, 0), COALESCE(pago_transferencia, 0), 
+                           COALESCE(pago_tarjeta, 0), monto
+                    FROM PagosBuro WHERE cedula_cliente = ? ORDER BY id DESC
+                """
+                cursor.execute(sql, (cedula,))
                 rows = cursor.fetchall()
+                conn.close()
+                if not rows:
+                    tree.insert("", "end", values=("Sin historial", "-", "-", "-", "-", "-"))
+                    
+                for row in rows:
+                    fecha = f"{row[0]} {row[1]}"
+                    vals = [fecha, "Buró"] + [f"$ {float(x):.2f}" for x in row[2:]]
+                    tree.insert("", "end", values=vals)
+                    
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
                 
-                tot = 0.0
-                ef = 0.0
-                tr = 0.0
-                tc = 0.0
-                
-                for met, mont in rows:
-                    val = float(mont)
-                    tot += val
-                    if met == "EFECTIVO": ef += val
-                    elif met == "TRANSFERENCIA": tr += val
-                    elif met == "TARJETA": tc += val
-                
-                if tot > 0:
-                    # C. Populate UI
-                    var_monto_final.set(tot)
-                    e_total.delete(0, tk.END)
-                    e_total.insert(0, f"{tot:.2f}")
-                    
-                    e_efectivo.configure(state='normal')
-                    e_efectivo.delete(0, tk.END); e_efectivo.insert(0, f"{ef:.2f}"); e_efectivo.configure(state='disabled')
-                    
-                    e_transfer.configure(state='normal')
-                    e_transfer.delete(0, tk.END); e_transfer.insert(0, f"{tr:.2f}"); e_transfer.configure(state='disabled')
-                    
-                    e_tarjeta.configure(state='normal')
-                    e_tarjeta.delete(0, tk.END); e_tarjeta.insert(0, f"{tc:.2f}"); e_tarjeta.configure(state='disabled')
-                    
-                    # D. Lock Main Interface
-                    e_total.configure(state='disabled')
-                    btn_procesar.configure(state='disabled', text="✅ ÚLTIMO COBRO REGISTRADO", fg_color="gray")
-                    btn_nuevo_cobro.pack(fill="x", pady=10)
-                    btn_imprimir.configure(state='normal', fg_color="#17a2b8")
+            # 5. BOTÓN DE CERRAR DIRECTO
+            btn_cerrar = ctk.CTkButton(
+                ventana_hist, 
+                text="CERRAR VENTANA", 
+                fg_color="#C0392B", 
+                height=40,
+                command=lambda: ventana_hist.destroy()
+            )
+            btn_cerrar.pack(pady=15, side="bottom")
 
-        except Exception as e_load:
-            print(f"Auto-load warning: {e_load}")
-        finally:
-            db_manager.release_connection(conn)
+        def logica_guardar():
+            try:
+                # 1. Obtener valores
+                try:
+                    total = float(e_monto_total.get() or 0)
+                except ValueError:
+                    messagebox.showwarning("Error", "Monto total inválido.", parent=ventana_cobro)
+                    return
+
+                v_efec = float(e_efectivo.get() or 0)
+                v_trans = float(e_transfer.get() or 0)
+                v_tarj = float(e_tarjeta.get() or 0)
+                suma = v_efec + v_trans + v_tarj
+                
+                if total == 0:
+                    messagebox.showwarning("Error", "El monto total no puede ser 0.", parent=ventana_cobro)
+                    return
+                
+                # 2. Validar Cuadre (con margen de 0.01 centavo)
+                if abs(total - suma) > 0.01:
+                    messagebox.showerror("Descuadre", f"El total es ${total} pero los pagos suman ${suma}.\nDiferencia: ${total-suma:.2f}", parent=ventana_cobro)
+                    return
+                
+                # 3. Guardar en BD (Tabla PagosBuro)
+                conn = sqlite3.connect("Alianza_Backup_Local.db")
+                cursor = conn.cursor()
+                
+                # Insertar en PagosBuro (Schema: fecha, hora, concepto, monto, metodo, cedula_cliente, nombre_cliente, usuario, efec, trans, tarj)
+                sql = """INSERT INTO PagosBuro (fecha, hora, concepto, monto, metodo, 
+                                         cedula_cliente, nombre_cliente, usuario, 
+                                         pago_efectivo, pago_transferencia, pago_tarjeta) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                
+                fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d")
+                hora_hoy = datetime.datetime.now().strftime("%H:%M:%S")
+                asesor = "Usuario Actual" 
+                
+                cursor.execute(sql, (fecha_hoy, hora_hoy, "Cobro Buro", total, "Ingreso", 
+                                     cliente_cedula, cliente_nombre, asesor, v_efec, v_trans, v_tarj))
+                conn.commit()
+                conn.close()
+                messagebox.showinfo("Éxito", "Pago registrado correctamente.", parent=ventana_cobro)
+                
+                # 4. Bloquear interfaz
+                btn_guardar.configure(state="disabled", text="✅ GUARDADO", fg_color="gray")
+                e_monto_total.configure(state="disabled")
+                btn_nuevo.pack(pady=10, fill="x")
+                
+                # Habilitar Historial en el mismo botón o cambiar texto
+                btn_guardar.configure(text="📜 VER HISTORIAL", command=logica_historial, state="normal", fg_color="#2874A6")
+                
+            except Exception as e:
+                messagebox.showerror("Error Crítico", f"No se pudo guardar: {e}", parent=ventana_cobro)
+
+        def logica_imprimir():
+            # CAPTURAR VALORES EN TIEMPO REAL
+            val_total = e_monto_total.get()
+            val_efec = e_efectivo.get()
+            val_trans = e_transfer.get()
+            val_tarj = e_tarjeta.get()
+            
+            # Llamar a tu función generadora de PDF existente
+            # Asegúrate que generar_recibo_buro acepte estos argumentos
+            try:
+                # Check signature support or use args
+                generar_recibo_buro(float(val_total or 0), cliente_nombre, cliente_cedula, ventana_cobro, 
+                                    efectivo=float(val_efec or 0), 
+                                    transferencia=float(val_trans or 0), 
+                                    tarjeta=float(val_tarj or 0)) 
+            except Exception as e:
+                messagebox.showerror("Error PDF", f"Error al generar recibo: {e}", parent=ventana_cobro)
+
+        def reset_nuevo():
+            e_monto_total.configure(state="normal")
+            e_monto_total.delete(0, 'end')
+            
+            for entry in [e_efectivo, e_transfer, e_tarjeta]:
+                entry.configure(state="normal")
+                entry.delete(0, 'end')
+                entry.insert(0, "0.00")
+                entry.configure(state="disabled")
+                
+            btn_guardar.configure(text="💾 VALIDAR Y GUARDAR PAGO", command=logica_guardar, fg_color="#2ECC71", state='normal')
+            btn_nuevo.pack_forget()
+
+        # --- Botones Inferiores ---
+        frame_btns = ctk.CTkFrame(ventana_cobro, fg_color="transparent")
+        frame_btns.pack(fill="x", padx=20, pady=20, side="bottom")
+
+        btn_guardar = ctk.CTkButton(frame_btns, text="💾 VALIDAR Y GUARDAR PAGO", 
+                                    font=("Arial", 14, "bold"), height=50, fg_color="#2ECC71", 
+                                    command=logica_guardar)
+        btn_guardar.pack(fill="x", pady=5)
+
+        btn_imprimir = ctk.CTkButton(frame_btns, text="🖨 IMPRIMIR RECIBO (ACTUAL)", 
+                                     height=40, fg_color="#5D6D7E", 
+                                     command=logica_imprimir)
+        btn_imprimir.pack(fill="x", pady=5)
+
+        btn_historial = ctk.CTkButton(frame_btns, text="📜 VER HISTORIAL DE PAGOS", 
+                                     height=40, fg_color="#F39C12", 
+                                     command=logica_historial)
+        btn_historial.pack(fill="x", pady=5)
+
+        btn_nuevo = ctk.CTkButton(frame_btns, text="🔄 REALIZAR OTRO COBRO", 
+                                  fg_color="#2874A6", command=reset_nuevo)
+        # btn_nuevo.pack() # Inicialmente oculto
+
+        # Verificación inicial de historial
+        # logica_historial()
 
     def buscar_cliente_caja(event=None):
         ident = var_cedula.get().strip()
@@ -7875,9 +7706,8 @@ def abrir_ventana_recaudacion():
                 return
             
             var_nro_cuota.set(f"{cuota_actual} / {plazo}")
-            var_capital.set(round(val_cuota, 2)) # Simplificación: Asumimos cuota fija capital+interes, mostramos total como capital para pago simple o calculamos
-            # Ajuste: El sistema original pide capital e interes separados. Vamos a simplificar usando el valor cuota total en capital 
-            # o dividirlo si tuvieramos tabla de amortización.
+            var_capital.set(round(val_cuota, 2))
+
             # User request: "el credito que se creo puede ser cobrado"
             # Asumiremos cuota nivelada donde el usuario paga el valor_cuota completo.
             # Para visualización, pondremos el valor_cuota en "Capital" y 0 en Interés para no complicar sin amortización generada.
@@ -8238,4 +8068,57 @@ if __name__ == '__main__':
     ctk.CTkLabel(card, text="v.2025.12 - Seguridad SSL", font=("Arial", 10), text_color="grey").pack(side="bottom", pady=15)
 
     win.mainloop()
+
+
+# --- AGREGAR AL FINAL DE basededatos_v3.0.py ---
+
+def obtener_historial_buro_por_cedula(cedula):
+    """
+    Busca todos los pagos de Buró para una cédula específica.
+    Agrupa los pagos por fecha para mostrar transacciones completas.
+    Retorna lista de tuplas: (fecha, hora, concepto, monto, efectivo, transferencia, tarjeta)
+    """
+    try:
+        conn = sqlite3.connect("Sistema_Financiero.db") # O el nombre correcto si es diferente, e.g. basededatos.db
+        cursor = conn.cursor()
+        
+        # 1. Obtener registros crudos de PagosBuro
+        cursor.execute("SELECT fecha, metodo, monto FROM PagosBuro WHERE cedula_cliente=? ORDER BY fecha DESC", (cedula,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # 2. Agrupar por fecha
+        grupos = {}
+        for f_str, met, mon in rows:
+            # f_str expected format: "YYYY-MM-DD HH:MM:SS"
+            if f_str not in grupos:
+                grupos[f_str] = {"EFECTIVO":0.0, "TRANSFERENCIA":0.0, "TARJETA":0.0}
+            grupos[f_str][met] += float(mon)
+            
+        # 3. Formatear para la tabla
+        datos_formateados = []
+        for f_full, montos in grupos.items():
+            # Split Date/Time
+            parts = f_full.split(' ')
+            fecha = parts[0]
+            hora = parts[1] if len(parts) > 1 else ""
+            
+            tot = sum(montos.values())
+            
+            datos_formateados.append((
+                fecha, 
+                hora, 
+                "Cobro Buró", 
+                tot, 
+                montos["EFECTIVO"], 
+                montos["TRANSFERENCIA"], 
+                montos["TARJETA"]
+            ))
+            
+        return datos_formateados
+        
+    except Exception as e:
+        print(f"Error al obtener historial: {e}")
+        return []
+
 

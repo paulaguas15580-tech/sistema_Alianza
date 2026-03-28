@@ -31,10 +31,12 @@ def formatear_float_str(valor):
 # Configuración PostgreSQL (Misma instancia que basededatos.py)
 try:
     db_manager = DatabaseManager(
-        host="localhost", 
+        host="192.168.100.100", 
         database="alianza_db",
         user="postgres",
-        password="clave_segura"
+        password="Alianza2026",
+        port="5432",
+        connect_timeout=5
     )
 except:
     db_manager = None

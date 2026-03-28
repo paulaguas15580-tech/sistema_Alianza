@@ -25,13 +25,14 @@ class DatabaseManager:
     Clase centralizada para la gestión de conexiones PostgreSQL con Pooling.
     Incluye fallback automático a SQLite si el servidor no está disponible.
     """
-    def __init__(self, host, database, user, password, port="5432", min_conn=1, max_conn=20):
+    def __init__(self, host, database, user, password, port="5432", min_conn=1, max_conn=20, connect_timeout=5):
         self.config = {
             "host": host,
             "database": database,
             "user": user,
             "password": password,
-            "port": port
+            "port": port,
+            "connect_timeout": connect_timeout
         }
         self.connection_pool = None
         self.mode = "POSTGRES"

@@ -109,10 +109,12 @@ DB_NAME = 'Alianza.db' # Mantenido por referencia, pero usaremos PostgreSQL
 # Configuración PostgreSQL (Ajustar según red local)
 try:
     db_manager = DatabaseManager(
-        host="localhost", # IP del servidor
+        host="192.168.100.100", # IP del servidor
         database="alianza_db",
         user="postgres",
-        password="clave_segura" # Cambiar por la real
+        password="Alianza2026", # Cambiar por la real
+        port="5432",
+        connect_timeout=5
     )
 except Exception as e:
     # Mostramos el error en consola, el manejo amigable se hace en los módulos

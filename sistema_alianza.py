@@ -256,4 +256,4 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     print("Iniciando aplicación en modo navegador en el puerto 8553...")
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=8553)
+    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=8553, host="0.0.0.0")

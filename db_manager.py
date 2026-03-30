@@ -32,7 +32,8 @@ class DatabaseManager:
             "user": user,
             "password": password,
             "port": port,
-            "connect_timeout": connect_timeout
+            "connect_timeout": connect_timeout,
+            "client_encoding": "utf8"
         }
         self.connection_pool = None
         self.mode = "POSTGRES"

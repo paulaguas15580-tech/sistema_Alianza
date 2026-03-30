@@ -137,7 +137,7 @@ try:
         host="192.168.100.100", # IP del servidor
         database="alianza_db",
         user="postgres",
-        password="Alianza2026", # Cambiar por la real
+        password="alianza2026", # Cambiar por la real
         port="5432",
         connect_timeout=5
     )
@@ -8003,73 +8003,76 @@ def abrir_ventana_recaudacion():
 
 
 if __name__ == '__main__':
-    verificar_integridad_db()
-    win = ctk.CTk()
-    habilitar_enter_como_tab(win)
-    win.title("Acceso al Sistema - Alianza C3F")
+    if 'streamlit' in sys.modules:
+        pass
+    else:
+        verificar_integridad_db()
+        win = ctk.CTk()
+        habilitar_enter_como_tab(win)
+        win.title("Acceso al Sistema - Alianza C3F")
+        
+        # Theme color
+        COLOR_FONDO = "#FAFAD2"
+        win.configure(fg_color=COLOR_FONDO)
+        
+        # Background Image
+        try:
+            img_bg = Image.open("background.jpg")
+            # For login, we can use fixed size or scaled
+            logo_bg = ctk.CTkImage(light_image=img_bg, dark_image=img_bg, size=(450, 650))
+            lbl_bg = ctk.CTkLabel(win, image=logo_bg, text="")
+            lbl_bg.place(x=0, y=0, relwidth=1, relheight=1)
+        except Exception as e:
+            print(f"Error cargando fondo login: {e}")
+        
+        # Increase size for the "card" look
+        w_width, w_height = 450, 650
+        screen_width = win.winfo_screenwidth()
+        screen_height = win.winfo_screenheight()
+        pos_x, pos_y = (screen_width - w_width) // 2, (screen_height - w_height) // 2
+        win.geometry(f"{w_width}x{w_height}+{pos_x}+{pos_y}")
+        win.resizable(False, False)
     
-    # Theme color
-    COLOR_FONDO = "#FAFAD2"
-    win.configure(fg_color=COLOR_FONDO)
+        # Central Card
+        card = ctk.CTkFrame(win, width=380, height=550, fg_color="white", corner_radius=20, border_width=1, border_color="#CCCCCC")
+        card.place(relx=0.5, rely=0.5, anchor="center")
     
-    # Background Image
-    try:
-        img_bg = Image.open("background.jpg")
-        # For login, we can use fixed size or scaled
-        logo_bg = ctk.CTkImage(light_image=img_bg, dark_image=img_bg, size=(450, 650))
-        lbl_bg = ctk.CTkLabel(win, image=logo_bg, text="")
-        lbl_bg.place(x=0, y=0, relwidth=1, relheight=1)
-    except Exception as e:
-        print(f"Error cargando fondo login: {e}")
+        # Logo inside card
+        try:
+            img = Image.open("Logo Face.jpg")
+            logo_login = ctk.CTkImage(light_image=img, dark_image=img, size=(180, 160))
+            lbl_logo = ctk.CTkLabel(card, image=logo_login, text="")
+            lbl_logo.pack(pady=(30, 20))
+        except:
+            ctk.CTkLabel(card, text="ALIANZA C3F", font=("Arial", 24, "bold"), text_color="#1860C3").pack(pady=(50, 30))
     
-    # Increase size for the "card" look
-    w_width, w_height = 450, 650
-    screen_width = win.winfo_screenwidth()
-    screen_height = win.winfo_screenheight()
-    pos_x, pos_y = (screen_width - w_width) // 2, (screen_height - w_height) // 2
-    win.geometry(f"{w_width}x{w_height}+{pos_x}+{pos_y}")
-    win.resizable(False, False)
-
-    # Central Card
-    card = ctk.CTkFrame(win, width=380, height=550, fg_color="white", corner_radius=20, border_width=1, border_color="#CCCCCC")
-    card.place(relx=0.5, rely=0.5, anchor="center")
-
-    # Logo inside card
-    try:
-        img = Image.open("Logo Face.jpg")
-        logo_login = ctk.CTkImage(light_image=img, dark_image=img, size=(180, 160))
-        lbl_logo = ctk.CTkLabel(card, image=logo_login, text="")
-        lbl_logo.pack(pady=(30, 20))
-    except:
-        ctk.CTkLabel(card, text="ALIANZA C3F", font=("Arial", 24, "bold"), text_color="#1860C3").pack(pady=(50, 30))
-
-    ctk.CTkLabel(card, text="IDENTIFICACIÓN DE USUARIO", font=("Arial", 14, "bold"), text_color="#555555").pack(pady=(10, 20))
-
-    # Entries with modern feel
-    ctk.CTkLabel(card, text="Usuario:", font=("Arial", 12), text_color="black").pack(anchor="w", padx=40)
-    u = ctk.CTkEntry(card, width=300, height=40, corner_radius=10, placeholder_text="Ingrese su usuario", 
-                     fg_color="#F9F9F9", text_color="black", border_color="#CCCCCC")
-    u.pack(pady=(5, 15))
+        ctk.CTkLabel(card, text="IDENTIFICACIÓN DE USUARIO", font=("Arial", 14, "bold"), text_color="#555555").pack(pady=(10, 20))
     
-    ctk.CTkLabel(card, text="Contraseña:", font=("Arial", 12), text_color="black").pack(anchor="w", padx=40)
-    p = ctk.CTkEntry(card, width=300, height=40, corner_radius=10, show="*", placeholder_text="••••••••",
-                     fg_color="#F9F9F9", text_color="black", border_color="#CCCCCC")
-    p.pack(pady=(5, 30))
+        # Entries with modern feel
+        ctk.CTkLabel(card, text="Usuario:", font=("Arial", 12), text_color="black").pack(anchor="w", padx=40)
+        u = ctk.CTkEntry(card, width=300, height=40, corner_radius=10, placeholder_text="Ingrese su usuario", 
+                         fg_color="#F9F9F9", text_color="black", border_color="#CCCCCC")
+        u.pack(pady=(5, 15))
+        
+        ctk.CTkLabel(card, text="Contraseña:", font=("Arial", 12), text_color="black").pack(anchor="w", padx=40)
+        p = ctk.CTkEntry(card, width=300, height=40, corner_radius=10, show="*", placeholder_text="••••••••",
+                         fg_color="#F9F9F9", text_color="black", border_color="#CCCCCC")
+        p.pack(pady=(5, 30))
+        
+        # Interaction logic
+        u.bind('<Return>', lambda e: p.focus())
+        p.bind('<Return>', lambda e: login_fn(win, u, p))
+        
+        # Login Button
+        btn_entrar = ctk.CTkButton(card, text="ENTRAR AL SISTEMA", command=lambda: login_fn(win, u, p),
+                                   font=("Arial", 14, "bold"), height=45, width=250, 
+                                   fg_color="#1860C3", hover_color="#1452A6", corner_radius=10)
+        btn_entrar.pack(pady=10)
     
-    # Interaction logic
-    u.bind('<Return>', lambda e: p.focus())
-    p.bind('<Return>', lambda e: login_fn(win, u, p))
+        # Footer/Version
+        ctk.CTkLabel(card, text="v.2025.12 - Seguridad SSL", font=("Arial", 10), text_color="grey").pack(side="bottom", pady=15)
     
-    # Login Button
-    btn_entrar = ctk.CTkButton(card, text="ENTRAR AL SISTEMA", command=lambda: login_fn(win, u, p),
-                               font=("Arial", 14, "bold"), height=45, width=250, 
-                               fg_color="#1860C3", hover_color="#1452A6", corner_radius=10)
-    btn_entrar.pack(pady=10)
-
-    # Footer/Version
-    ctk.CTkLabel(card, text="v.2025.12 - Seguridad SSL", font=("Arial", 10), text_color="grey").pack(side="bottom", pady=15)
-
-    win.mainloop()
+        win.mainloop()
 
 
 # --- AGREGAR AL FINAL DE basededatos_v3.0.py ---

@@ -34,7 +34,7 @@ try:
         host="192.168.100.100", 
         database="alianza_db",
         user="postgres",
-        password="Alianza2026",
+        password="alianza2026",
         port="5432",
         connect_timeout=5
     )

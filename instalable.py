@@ -468,9 +468,9 @@ def migrar_db():
         # Tabla Auditoria
         if not check_table_exists(cursor, 'Auditoria'):
             print("Migrando DB: Creando tabla 'Auditoria'...")
-            cursor.execute("""
+            cursor.execute(f"""
                 CREATE TABLE Auditoria (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {sql_type("SERIAL PRIMARY KEY")},
                     id_usuario TEXT,
                     accion TEXT,
                     id_cliente TEXT,
@@ -489,9 +489,9 @@ def migrar_db():
            # Verificar si existe la tabla Documentos
         if not check_table_exists(cursor, 'Documentos'):
             print("Migrando DB: Creando tabla 'Documentos'...")
-            cursor.execute("""
+            cursor.execute(f"""
                 CREATE TABLE Documentos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {sql_type("SERIAL PRIMARY KEY")},
                     cedula_cliente TEXT NOT NULL,
                     nombre_archivo TEXT NOT NULL,
                     tipo_documento TEXT,
@@ -506,9 +506,9 @@ def migrar_db():
         # Verificar si existe la tabla Microcreditos
         if not check_table_exists(cursor, 'Microcreditos'):
             print("Migrando DB: Creando tabla 'Microcreditos'...")
-            cursor.execute("""
+            cursor.execute(f"""
                 CREATE TABLE Microcreditos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {sql_type("SERIAL PRIMARY KEY")},
                     cedula_cliente TEXT NOT NULL,
                     ruc TEXT,
                     observaciones TEXT,
@@ -535,9 +535,9 @@ def migrar_db():
         # Tabla Caja
         if not check_table_exists(cursor, 'Caja'):
             print("Migrando DB: Creando tabla 'Caja'...")
-            cursor.execute("""
+            cursor.execute(f"""
                 CREATE TABLE Caja (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id {sql_type("SERIAL PRIMARY KEY")},
                     fecha_hora TEXT,
                     cedula TEXT,
                     ruc TEXT,

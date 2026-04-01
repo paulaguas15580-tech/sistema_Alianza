@@ -106,7 +106,9 @@ def crear_tablas():
             cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso) VALUES (%s, %s, %s)", ('Paul', hash_admin, 1))
 
         conn.commit()
-    except Exception as e: print(f"Error DB: {e}")
+    except Exception as e:
+        conn.rollback()
+        print(f"Error DB: {e}")
     finally: db_manager.release_connection(conn)
 
 def migrar_db():
@@ -263,7 +265,9 @@ def migrar_db():
             cursor.execute("UPDATE Usuarios SET usuario=%s, clave_hash=%s WHERE id=%s", ('Paul', new_hash, admin_user[0]))
             conn.commit()
             
-    except Exception as e: print(f"Error Migración: {e}")
+    except Exception as e:
+        conn.rollback()
+        print(f"Error Migración: {e}")
     finally: db_manager.release_connection(conn)
 
 def registrar_auditoria(usuario, accion, id_cliente=None, detalles=None):

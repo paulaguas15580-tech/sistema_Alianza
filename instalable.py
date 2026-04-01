@@ -295,12 +295,7 @@ def crear_tablas():
                 id {sql_type("SERIAL PRIMARY KEY")},
                 cedula_cliente TEXT UNIQUE NOT NULL,
                 
-                chk_dis_temp INTEGER DEFAULT 0, val_dis_temp REAL DEFAULT 0,
-                chk_dis_reg INTEGER DEFAULT 0, val_dis_reg REAL DEFAULT 0,
-                chk_pat_1 INTEGER DEFAULT 0, val_pat_1 REAL DEFAULT 0,
-                chk_pat_2 INTEGER DEFAULT 0, val_pat_2 REAL DEFAULT 0,
-                chk_inmueble INTEGER DEFAULT 0, val_inmueble REAL DEFAULT 0,
-                chk_ruc INTEGER DEFAULT 0, val_ruc REAL DEFAULT 0,
+
                 chk_dis_temp INTEGER DEFAULT 0, val_dis_temp REAL DEFAULT 0, obs_dis_temp TEXT,
                 chk_dis_reg INTEGER DEFAULT 0, val_dis_reg REAL DEFAULT 0, obs_dis_reg TEXT,
                 chk_pat_1 INTEGER DEFAULT 0, val_pat_1 REAL DEFAULT 0, obs_pat_1 TEXT,
@@ -328,7 +323,9 @@ def crear_tablas():
             cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso, rol) VALUES (%s, %s, %s, %s)", ('Paul', hash_admin, 1, 'Administrador'))
 
         conn.commit()
-    except Exception as e: print(f"Error DB: {e}")
+    except Exception as e:
+        conn.rollback()
+        print(f"Error DB: {e}")
     finally: db_manager.release_connection(conn)
 
 # Helpers delegados a db_manager
@@ -570,12 +567,13 @@ def migrar_db():
         print("Optimizando DB: Verificando Índices...")
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_cedula ON Clientes(cedula)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON Clientes(nombre)")
+            # cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON Clientes(nombre)") # Removed to prevent PG exception
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_caja_cedula ON Caja(cedula)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_micro_cedula ON Microcreditos(cedula_cliente)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_docs_cedula ON Documentos(cedula_cliente)")
             conn.commit()
         except Exception as e:
+            conn.rollback()
             print(f"Nota sobre índices: {e}")
 
         # Migración Intermediacion Observaciones
@@ -608,10 +606,15 @@ def migrar_db():
             print("Usuario actualizado.")
 
     except Exception as e: 
-        print(f"Error Migración: {e}")
-        # MessageBox para alertar si falla la integridad crítica
-        try: messagebox.showerror("Error Crítico de Integridad", f"Fallo al verificar/reparar base de datos:\n{e}")
-        except: pass
+        conn.rollback()
+        import sys
+        if 'streamlit' in sys.modules:
+            print(f"Error Migración Streamlit: {e}")
+        else:
+            print(f"Error Migración: {e}")
+            # MessageBox para alertar si falla la integridad crítica
+            try: messagebox.showerror("Error Crítico de Integridad", f"Fallo al verificar/reparar base de datos:\n{e}")
+            except: pass
     finally: db_manager.release_connection(conn)
 
 crear_tablas()

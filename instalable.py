@@ -40,7 +40,10 @@ def build_executable():
         '--hidden-import=reportlab.graphics.barcode.code39',
         '--hidden-import=reportlab.graphics.barcode.usps',
         '--hidden-import=reportlab.graphics.barcode.usps4cb',
-        '--hidden-import=reportlab.graphics.barcode.ecc200datamatrix'
+        '--hidden-import=reportlab.graphics.barcode.ecc200datamatrix',
+        '--hidden-import=reportlab.graphics.barcode.usps4s',
+        '--collect-all=reportlab',
+        '--collect-all=xhtml2pdf'
     ]
 
     # Añadir '--add-data' automáticamente para cada recurso gráfico existente

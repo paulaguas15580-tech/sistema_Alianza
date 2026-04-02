@@ -489,6 +489,14 @@ def migrar_db():
 
         # Migración Usuarios
         cols_user = get_column_names(cursor, 'Usuarios')
+        if 'clave_hash' not in cols_user:
+            if 'clave' in cols_user:
+                print("Migrando DB: Renombrando 'clave' a 'clave_hash' en Usuarios...")
+                cursor.execute("ALTER TABLE Usuarios RENAME COLUMN clave TO clave_hash")
+            else:
+                print("Migrando DB: Agregando 'clave_hash' a Usuarios...")
+                cursor.execute("ALTER TABLE Usuarios ADD COLUMN clave_hash TEXT")
+            conn.commit()
         if 'estado' not in cols_user:
             print("Migrando DB: Agregando 'estado' a Usuarios...")
             cursor.execute("ALTER TABLE Usuarios ADD COLUMN estado INTEGER DEFAULT 1")
@@ -659,6 +667,8 @@ def migrar_db():
         import sys
         if 'streamlit' in sys.modules:
             print(f"Error Migración Streamlit: {e}")
+            import streamlit as st
+            st.error(f"Error crítico en base de datos: {e}")
         else:
             print(f"Error Migración: {e}")
             # MessageBox para alertar si falla la integridad crítica

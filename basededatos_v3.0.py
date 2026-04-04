@@ -613,7 +613,7 @@ def migrar_db():
         print("Optimizando DB: Verificando Índices...")
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_cedula ON Clientes(cedula)")
-            # cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON Clientes(nombre)") # Removed to prevent PG exception
+            # cursor.execute("CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON Clientes(nombres)") # Removed to prevent PG exception
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_caja_cedula ON Caja(cedula)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_micro_cedula ON Microcreditos(cedula_cliente)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_docs_cedula ON Documentos(cedula_cliente)")
@@ -792,12 +792,12 @@ def sincronizar_cliente_desde_caja(cedula, ruc, nombre, email, direccion, telefo
             # MAPEO CORREGIDO: apertura -> num_carpeta, fecha_registro -> fecha_apertura
             cursor.execute("""
                 UPDATE Clientes SET 
-                ruc=%s, nombre=%s, email=%s, direccion=%s, telefono=%s, asesor=%s, apertura=%s, fecha_registro=%s
+                ruc=%s, nombres=%s, email=%s, direccion=%s, telefono=%s, asesor=%s, apertura=%s, fecha_registro=%s
                 WHERE id = %s
             """, (ruc, nombre, email, direccion, telefono, asesor, num_carpeta, fecha_apertura, exists[0]))
         else:
             cursor.execute("""
-                INSERT INTO Clientes (cedula, ruc, nombre, email, direccion, telefono, asesor, apertura, fecha_registro) 
+                INSERT INTO Clientes (cedula, ruc, nombres, email, direccion, telefono, asesor, apertura, fecha_registro) 
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (cedula, ruc, nombre, email, direccion, telefono, asesor, num_carpeta, fecha_apertura))
         conn.commit()
@@ -843,7 +843,7 @@ def actualizar_cliente(id_cliente, *args):
         with db_connection() as (conn, cursor):
             cursor.execute("""
                 UPDATE Clientes SET 
-                cedula=%s, ruc=%s, nombre=%s, estado_civil=%s, cargas_familiares=%s, email=%s, telefono=%s, direccion=%s, parroquia=%s, 
+                cedula=%s, ruc=%s, nombres=%s, estado_civil=%s, cargas_familiares=%s, email=%s, telefono=%s, direccion=%s, parroquia=%s, 
                 tipo_vivienda=%s, referencia_vivienda=%s, profesion=%s, ingresos_mensuales=%s, fuente_ingreso=%s, terreno=%s, valor_terreno=%s, hipotecado=%s, referencia1=%s, referencia2=%s, asesor=%s, fecha_registro=%s, apertura=%s, 
                 "fecha nacimiento"=%s, observaciones=%s, 
                 "cartera castigada"=%s, "valor cartera"=%s, "demanda judicial"=%s, "valor demanda"=%s, "problemas justicia"=%s, "detalle justicia"=%s,
@@ -877,7 +877,7 @@ def eliminar_cliente(id_cliente):
 def buscar_clientes(termino):
     with db_connection() as (conn, cursor):
         t = '%' + termino + '%'
-        cursor.execute("SELECT * FROM Clientes WHERE nombre LIKE %s OR cedula LIKE %s OR ruc LIKE %s OR numero_carpeta LIKE %s ORDER BY apertura ASC", (t,t,t,t))
+        cursor.execute("SELECT * FROM Clientes WHERE nombres LIKE %s OR cedula LIKE %s OR ruc LIKE %s OR numero_carpeta LIKE %s ORDER BY apertura ASC", (t,t,t,t))
         return cursor.fetchall()
 
 # --- USUARIOS ---
@@ -1015,7 +1015,7 @@ def mostrar_datos_tree():
         # ID, Cedula, Nombre, Telf, Ingresos, Sit.Financiera (CHECKBOX), Producto, N.Apertura(apertura), Asesor
         sf = "Terreno: Si" if ('terreno' in row.keys() and row['terreno'] == 1) else ""
         # MAPEO CORREGIDO: Apertura (UI) muestra el numero de carpeta guardado en 'apertura' (DB)
-        visual = (row['id'], row['cedula'], row['nombre'], row['telefono'], ing_fmt, sf, row['producto'], row['apertura'], row['asesor'])
+        visual = (row['id'], row['cedula'], row['nombres'], row['telefono'], ing_fmt, sf, row['producto'], row['apertura'], row['asesor'])
         tree.insert('', tk.END, values=visual)
 
 def accion_guardar():
@@ -1104,7 +1104,7 @@ def accion_buscar():
             visual = (
                 run['id'], 
                 run['cedula'], 
-                run['nombre'], 
+                run['nombres'], 
                 run['telefono'], 
                 ing_fmt, 
                 sf, 
@@ -1172,7 +1172,7 @@ def cargar_seleccion(event):
     try:
         safe_insert(e_cedula, val['cedula'])
         if val['ruc']: safe_insert(e_ruc, val['ruc'])
-        safe_insert(e_nombre, val['nombre'])
+        safe_insert(e_nombre, val['nombres'])
         if val['estado_civil']: c_civil.set(val['estado_civil'])
         if val['cargas_familiares']: safe_insert(e_cargas, val['cargas_familiares'])
         if val['email']: safe_insert(e_email, val['email'])
@@ -1617,7 +1617,7 @@ def abrir_modulo_informes():
                 query = """
                     SELECT
                         m.cedula_cliente,
-                        c.nombre,
+                        c.nombres,
                         m.monto_aprobado,
                         m.plazo_meses,
                         m.valor_cuota,
@@ -1699,7 +1699,7 @@ def abrir_modulo_informes():
                 query = """
                     SELECT
                         m.cedula_cliente,
-                        c.nombre,
+                        c.nombres,
                         c.asesor,
                         m.status,
                         m.sub_status,
@@ -1775,7 +1775,7 @@ def abrir_modulo_informes():
                     SELECT
                         p.fecha,
                         p.cedula_cliente,
-                        c.nombre,
+                        c.nombres,
                         p.cuota_nro,
                         p.valor_capital,
                         p.valor_interes,
@@ -1913,7 +1913,7 @@ def abrir_modulo_informes():
                 query = """
                     SELECT
                         i.cedula_cliente,
-                        c.nombre,
+                        c.nombres,
                         i.fecha_cita,
                         i.informe_cita,
                         i.fecha_desembolso_inter,
@@ -1970,7 +1970,7 @@ def abrir_modulo_informes():
                 query = """
                     SELECT
                         r.cedula_cliente,
-                        c.nombre,
+                        c.nombres,
                         r.fecha_inicio,
                         r.terminos,
                         r.resultado,
@@ -2138,7 +2138,7 @@ def abrir_modulo_documentos():
         res = None
         if criteria == "cedula": cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE cedula = %s", (val,))
         elif criteria == "ruc": cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE ruc = %s", (val,))
-        elif criteria == "nombre": cursor.execute("SELECT nombre, cedula, ruc FROM Clientes WHERE nombre LIKE %s LIMIT 1", (f"%{val}%",))
+        elif criteria == "nombre": cursor.execute("SELECT nombres, cedula, ruc FROM Clientes WHERE nombres LIKE %s LIMIT 1", (f"%{val}%",))
         res = cursor.fetchone()
         db_manager.release_connection(conn)
         
@@ -4269,7 +4269,7 @@ def crear_modulo_generico(titulo, color_titulo="#1860C3", search_callback=None, 
                  cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE ruc = %s", (val,))
                  res = cursor.fetchone()
             elif criteria == "nombre":
-                 cursor.execute("SELECT nombre, ruc, cedula FROM Clientes WHERE nombre LIKE %s LIMIT 1", (f"%{val}%",))
+                 cursor.execute("SELECT nombres, ruc, cedula FROM Clientes WHERE nombres LIKE %s LIMIT 1", (f"%{val}%",))
                  res = cursor.fetchone()
             db_manager.release_connection(conn)
             
@@ -5918,7 +5918,7 @@ def abrir_dashboard_estadisticas():
     
     try:
         cursor.execute("""
-            SELECT c.nombre, m.monto_aprobado, m.plazo_meses 
+            SELECT c.nombres, m.monto_aprobado, m.plazo_meses 
             FROM Microcreditos m 
             JOIN Clientes c ON m.cedula_cliente = c.cedula 
             ORDER BY m.monto_aprobado DESC LIMIT 5
@@ -7579,7 +7579,7 @@ def abrir_modulo_cartera():
             query = """
                 SELECT
                     m.cedula_cliente,
-                    c.nombre,
+                    c.nombres,
                     m.monto_aprobado,
                     m.plazo_meses,
                     m.valor_cuota,

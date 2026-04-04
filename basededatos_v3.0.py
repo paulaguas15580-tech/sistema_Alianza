@@ -862,7 +862,7 @@ def actualizar_cliente(id_cliente, *args):
     except Exception as e: return False, f"Error: {e}"
 
 def eliminar_cliente(id_cliente):
-    if NIVEL_ACCESO != 1: return False, "No tiene permisos para eliminar."
+    if NIVEL_ACCESO != "Administrador": return False, "No tiene permisos para eliminar."
     with db_connection() as (conn, cursor):
         # Get cedula for audit before deleting
         cursor.execute("SELECT cedula, nombre FROM Clientes WHERE id = %s", (id_cliente,))
@@ -881,22 +881,21 @@ def buscar_clientes(termino):
         return cursor.fetchall()
 
 # --- USUARIOS ---
-def crear_usuario_db(usuario, clave, nivel, rol="Usuario"):
+def crear_usuario_db(usuario, clave, rol="Usuario"):
     try:
         with db_connection() as (conn, cursor):
-            cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso, rol, estado) VALUES (%s, %s, %s, %s, %s)", 
-                           (usuario, generar_hash(clave), nivel, rol, 1))
+            cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, rol, estado) VALUES (%s, %s, %s, %s)", (usuario, generar_hash(clave), rol, 1))
         return True, "Ok"
     except Exception as e: return False, f"Error: {e}"
 
 def verificar_credenciales(usuario, clave):
     with db_connection() as (conn, cursor):
-        cursor.execute("SELECT clave_hash, nivel_acceso, estado, rol FROM Usuarios WHERE usuario = %s", (usuario,))
+        cursor.execute("SELECT clave_hash, estado, rol FROM Usuarios WHERE usuario = %s", (usuario,))
         res = cursor.fetchone()
     if res:
-        h, lvl, est, rol = res
+        h, est, rol = res
         if est == 0: return False, "Inactivo"
-        if generar_hash(clave) == h: return True, lvl
+        if generar_hash(clave) == h: return True, rol
     return False, "Error"
 
 # =================================================================
@@ -1129,7 +1128,7 @@ def cargar_seleccion(event):
         # Si se deselecciona, limpiar ID y deshabilitar eliminar
         ID_CLIENTE_SELECCIONADO = None
         try:
-            if NIVEL_ACCESO == 1: btn_eliminar.configure(state='disabled')
+            if NIVEL_ACCESO == "Administrador": btn_eliminar.configure(state='disabled')
         except: pass
         return
     
@@ -1335,7 +1334,7 @@ def cargar_seleccion(event):
 
         # Habilitar botón eliminar si es admin
         try:
-            if NIVEL_ACCESO == 1:
+            if NIVEL_ACCESO == "Administrador":
                 btn_eliminar.configure(state='normal')
         except: pass
 
@@ -1347,7 +1346,7 @@ def cargar_seleccion(event):
     except Exception as e: print(f"Error carga: {e}")
 
     # --- LÓGICA DE PERMISOS Y BLOQUEO AL CARGAR ---
-    if NIVEL_ACCESO == 1:
+    if NIVEL_ACCESO == "Administrador":
         # Administrador: Todo habilitado
         toggle_inputs_clientes('normal')
         btn_accion.configure(text="📝 Actualizar", command=accion_actualizar, state='normal')
@@ -1443,7 +1442,7 @@ def win_gestion_usuarios():
             for u in c.fetchall(): tr.insert('', tk.END, values=(u[0], u[1], "Admin" if u[2]==1 else "Std"))
 
     def add_u():
-        res, msg = crear_usuario_db(eu.get(), ep.get(), 1 if cr.get()=="Admin" else 2)
+        res, msg = crear_usuario_db(eu.get(), ep.get(), "Administrador" if cr.get()=="Admin" else "Usuario")
         if res:
              messagebox.showinfo("Éxito", "Usuario creado", parent=top)
         else:
@@ -2498,7 +2497,7 @@ def abrir_menu_principal(app_root=None):
     ]
     
     # Filtrar por nivel de acceso para Usuarios (Fila 5)
-    if NIVEL_ACCESO == 1:
+    if NIVEL_ACCESO == "Administrador":
         botones_config.append(("Usuarios", abrir_modulo_usuarios, 5, 0))
     
     # Salir del sistema (Fila 5, Columna 1)
@@ -2972,7 +2971,7 @@ def abrir_modulo_clientes():
             messagebox.showwarning("Atención", "Seleccione un cliente para eliminar.")
             return
             
-        if NIVEL_ACCESO != 1:
+        if NIVEL_ACCESO != "Administrador":
             messagebox.showerror("Error", "Solo el Administrador puede eliminar registros.")
             return
 
@@ -2997,12 +2996,12 @@ def abrir_modulo_clientes():
     
     btn_eliminar = ctk.CTkButton(f_btns, text="🗑 Eliminar", command=ui_eliminar_cliente, fg_color="#d9534f", hover_color="#c9302c", state="disabled", width=120)
     # Permiso Administrador (1) para eliminar
-    if NIVEL_ACCESO == 1: 
+    if NIVEL_ACCESO == "Administrador": 
         btn_eliminar.pack(side='left', padx=15)
 
     
     # Restricciones para Asesores (Nivel 6)
-    if NIVEL_ACCESO == 6:
+    if NIVEL_ACCESO == "Asesor":
         # Deshabilitar pestaña Legal (t3 es tab_view.tab("Gestión y Legal"))
         # Using a safer way to disable access if needed
         tab_view.set("Identificación y Ubicación") # Force different tab
@@ -3534,7 +3533,7 @@ def abrir_modulo_microcredito():
             e_hor.configure(state='disabled')
         except: pass
 
-        if 'NIVEL_ACCESO' in globals() and NIVEL_ACCESO == 1:
+        if 'NIVEL_ACCESO' in globals() and NIVEL_ACCESO == "Administrador":
             # ADMIN: Botón activo para corregir, campos editables (menos fecha/hora)
             btn_widget.configure(state='normal', text=f"💾 Actualizar Ref {num_ref} (Admin)", fg_color="#1860C3")
             for w in widgets_tuple: # widgets_tuple tiene (e_nom, e_tel, e_fec, e_hor...)
@@ -3759,7 +3758,7 @@ def seleccionar_status(st):
     
     # RESTRICCIÓN: Si ya está guardado (id_micro_actual no es None) 
     # y el usuario NO es admin, no permitir cambiar el status principal
-    if id_micro_actual is not None and NIVEL_ACCESO != 1:
+    if id_micro_actual is not None and NIVEL_ACCESO != "Administrador":
         # Si intenta cambiar a un status distinto del actual cargado en DB
         # Re-cargar el status original y salir
         conn, cursor = conectar_db()
@@ -4359,7 +4358,7 @@ def abrir_modulo_usuarios():
         rol = " ".join(sel_nivel.split()[1:])
         
         if u and p and len(p) >= 4:
-             ok, msg = crear_usuario_db(u, p, n, rol)
+             ok, msg = crear_usuario_db(u, p, rol)
              if ok:
                  registrar_auditoria("Creación Usuario", detalles=f"Se creó el usuario {u} con rol {rol}")
                  messagebox.showinfo("Éxito", f"Usuario {u} creado.")
@@ -4682,7 +4681,7 @@ def abrir_modulo_rehabilitacion():
         if var_finalizado.get() == 1:
             global NIVEL_ACCESO
             # Nivel 1 es Administrador
-            if NIVEL_ACCESO != 1:
+            if NIVEL_ACCESO != "Administrador":
                 messagebox.showerror("Seguridad", "Solo un Administrador puede reabrir este proceso.")
                 return
             
@@ -5571,8 +5570,8 @@ def abrir_modulo_intermediacion():
         c_inf = security_widgets['chk_informe']
         e_inf = security_widgets['desc_informe']
         
-        # 1. Admin Access (NIVEL_ACCESO == 1)
-        if NIVEL_ACCESO == 1:
+        # 1. Admin Access (NIVEL_ACCESO == "Administrador")
+        if NIVEL_ACCESO == "Administrador":
             for w in [c_pre, e_pre, c_apr, e_apr, c_inf, e_inf]:
                 w.configure(state='normal')
             return
@@ -6407,7 +6406,7 @@ def abrir_modulo_caja():
                 except: var_observaciones.set("")
 
                 # PERMISOS: Si no es admin y ya existe, BLOQUEAR TODO
-                if NIVEL_ACCESO != 1:
+                if NIVEL_ACCESO != "Administrador":
                     toggle_inputs("disabled")
                 else:
                     toggle_inputs("normal")
@@ -6484,7 +6483,7 @@ def abrir_modulo_caja():
         exists_check = cursor_check.fetchone()
         db_manager.release_connection(conn_check)
 
-        if exists_check and NIVEL_ACCESO != 1:
+        if exists_check and NIVEL_ACCESO != "Administrador":
             messagebox.showerror("Error", "No tiene permisos para modificar registros existentes.")
             return
 
@@ -6851,7 +6850,7 @@ def abrir_modulo_caja():
             messagebox.showwarning("Atención", "Debe completar 'Valor de Apertura' y 'No. de Apertura' antes de guardar.")
             return
 
-        if NIVEL_ACCESO != 1:
+        if NIVEL_ACCESO != "Administrador":
             messagebox.showerror("Error", "No tiene permisos para modificar datos existentes.")
             return
 

@@ -431,7 +431,7 @@ def eliminar_cliente_db(id_cliente):
 
 def verificar_credenciales(usuario, clave):
     conn, cursor = conectar_db()
-    cursor.execute("SELECT clave_hash, nivel_acceso FROM Usuarios WHERE usuario = %s", (usuario,))
+    cursor.execute("SELECT clave_hash, rol FROM Usuarios WHERE usuario = %s", (usuario,))
     res = cursor.fetchone()
     db_manager.release_connection(conn)
     if res and generar_hash(clave) == res[0]: return True, res[1]

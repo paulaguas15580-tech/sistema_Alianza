@@ -2396,21 +2396,25 @@ def login_fn(app, u_entry, p_entry):
     u = u_entry.get()
     p = p_entry.get()
     
-    ok, lvl = verificar_credenciales(u, p)
-    if ok is True:
-        USUARIO_ACTIVO = u; NIVEL_ACCESO = lvl
-        registrar_auditoria("Inicio de Sesión", detalles=f"Usuario {u} ingresó al sistema.")
-        
-        # Clear current window (Login)
-        for widget in app.winfo_children():
-            widget.destroy()
+    try:
+        ok, lvl = verificar_credenciales(u, p)
+        if ok is True:
+            USUARIO_ACTIVO = u; NIVEL_ACCESO = lvl
+            registrar_auditoria("Inicio de Sesión", detalles=f"Usuario {u} ingresó al sistema.")
             
-        # Open Menu in same window
-        abrir_menu_principal(app)
-    elif lvl == "Inactivo":
-        messagebox.showerror("Acceso Denegado", "Su cuenta está inactiva. Contacte al administrador.")
-    else:
-        messagebox.showerror("Error", "Datos incorrectos")
+            # Clear current window (Login)
+            for widget in app.winfo_children():
+                widget.destroy()
+                
+            # Open Menu in same window
+            abrir_menu_principal(app)
+        elif lvl == "Inactivo":
+            messagebox.showerror("Acceso Denegado", "Su cuenta está inactiva. Contacte al administrador.")
+        else:
+            messagebox.showerror("Error", "Datos incorrectos")
+    except Exception as e:
+        print(f"Error en login: {e}")
+        messagebox.showerror("Error de Sistema", f"No se pudo completar el inicio de sesión:\n{str(e)}")
 
 
 def abrir_menu_principal(app_root=None):

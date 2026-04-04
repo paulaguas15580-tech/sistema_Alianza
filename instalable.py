@@ -30,8 +30,7 @@ def build_executable():
     args = [
         'basededatos_v3.0.py',    # Script principal a compilar
         '--name=SistemaAlianza',  # Nombre del ejecutable final
-        '--windowed',             # No mostrar consola negra en background
-        '--noconsole',
+
         '--onedir',               # Recomendado crear una carpeta ('dist/SistemaAlianza') para mayor velocidad y menos problemas
         '--noconfirm',            # Sobrescribir carpeta dist/ automáticamente si existe
         '--clean',                # Limpiar caché antes de compilar

@@ -22,6 +22,7 @@ from db_manager import DatabaseManager
 from db_manager import DatabaseManager
 import psycopg2.extras
 import sys
+from asesores_view import AsesoresView
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -391,6 +392,12 @@ def migrar_db():
         # Verificar si existe la columna 'referencia_vivienda'
         columnas = get_column_names(cursor, 'Clientes')
         
+        if 'imagen_deposito' not in columnas:
+            print("Migrando DB: Agregando columna 'imagen_deposito' a Clientes...")
+            cursor.execute("ALTER TABLE Clientes ADD COLUMN imagen_deposito BYTEA")
+            conn.commit()
+            print("Migración completada.")
+            
         if 'referencia_vivienda' not in columnas:
             print("Migrando DB: Agregando columna 'referencia_vivienda'...")
             cursor.execute("ALTER TABLE Clientes ADD COLUMN referencia_vivienda TEXT")
@@ -881,10 +888,10 @@ def buscar_clientes(termino):
         return cursor.fetchall()
 
 # --- USUARIOS ---
-def crear_usuario_db(usuario, clave, rol="Usuario"):
+def crear_usuario_db(usuario, clave, rol="Usuario", nivel_acceso=2):
     try:
         with db_connection() as (conn, cursor):
-            cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, rol, estado) VALUES (%s, %s, %s, %s)", (usuario, generar_hash(clave), rol, 1))
+            cursor.execute("INSERT INTO Usuarios (usuario, clave_hash, nivel_acceso, rol, estado) VALUES (%s, %s, %s, %s, %s)", (usuario, generar_hash(clave), nivel_acceso, rol, 1))
         return True, "Ok"
     except Exception as e: return False, f"Error: {e}"
 
@@ -2475,33 +2482,40 @@ def abrir_menu_principal(app_root=None):
         lbl_logo.grid(row=1, column=0, columnspan=3, pady=10)
     except Exception as e:
         print(f"Error cargando logo: {e}")
+    def abrir_modulo_asesores():
+        AsesoresView(menu_app, db_manager, USUARIO_ACTIVO)
     
     # Definir botones (Texto, Función, Fila, Columna)
-    # Fila 1: Gestión de Clientes, Documentos, Consultas
-    # Fila 2: Microcrédito, Rehabilitación, Intermediación
-    # Fila 3: Cartera, Informes, Usuarios
-    # Fila 4: Salir del sistema en la columna 2
+    # Reorganizamos para mantener grilla 3x3 para los primeros 9 y Documentos a la Fila 5.
     
     botones_config = [
-        ("Caja", abrir_modulo_caja, 2, 0),
-        ("Gestión de Clientes", abrir_modulo_clientes, 2, 1),
-        ("Consultas", abrir_modulo_consultas, 2, 2),
+        ("Asesores", abrir_modulo_asesores, 2, 0),
+        ("Caja", abrir_modulo_caja, 2, 1),
+        ("Gestión de Clientes", abrir_modulo_clientes, 2, 2),
         
-        ("Microcrédito", abrir_modulo_microcredito, 3, 0),
-        ("Rehabilitación", abrir_modulo_rehabilitacion, 3, 1),
-        ("Intermediación", abrir_modulo_intermediacion, 3, 2),
+        ("Consultas", abrir_modulo_consultas, 3, 0),
+        ("Microcrédito", abrir_modulo_microcredito, 3, 1),
+        ("Rehabilitación", abrir_modulo_rehabilitacion, 3, 2),
         
-        ("Cartera", abrir_modulo_cartera, 4, 0),
-        ("Informes", abrir_modulo_informes, 4, 1),
-        ("Documentos", abrir_modulo_documentos, 4, 2),
+        ("Intermediación", abrir_modulo_intermediacion, 4, 0),
+        ("Cartera", abrir_modulo_cartera, 4, 1),
+        ("Informes", abrir_modulo_informes, 4, 2),
     ]
     
-    # Filtrar por nivel de acceso para Usuarios (Fila 5)
-    if NIVEL_ACCESO == "Administrador":
-        botones_config.append(("Usuarios", abrir_modulo_usuarios, 5, 0))
+    # Modulos movidos fuera de la grilla principal de 3x3
+    col_index = 0
     
-    # Salir del sistema (Fila 5, Columna 1)
-    botones_config.append(("Salir Sistema", menu_app.destroy, 5, 1))
+    # Documentos
+    botones_config.append(("Documentos", abrir_modulo_documentos, 5, col_index))
+    col_index += 1
+    
+    # Filtrar por nivel de acceso para Usuarios
+    if NIVEL_ACCESO == "Administrador":
+        botones_config.append(("Usuarios", abrir_modulo_usuarios, 5, col_index))
+        col_index += 1
+    
+    # Salir del sistema
+    botones_config.append(("Salir Sistema", menu_app.destroy, 5, col_index))
 
     # Cargar fondo para botones
     try:
@@ -4358,7 +4372,7 @@ def abrir_modulo_usuarios():
         rol = " ".join(sel_nivel.split()[1:])
         
         if u and p and len(p) >= 4:
-             ok, msg = crear_usuario_db(u, p, rol)
+             ok, msg = crear_usuario_db(u, p, rol, nivel_acceso=n)
              if ok:
                  registrar_auditoria("Creación Usuario", detalles=f"Se creó el usuario {u} con rol {rol}")
                  messagebox.showinfo("Éxito", f"Usuario {u} creado.")

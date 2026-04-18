@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 import datetime
 
 class AsesoresView(ctk.CTkToplevel):
@@ -9,7 +9,7 @@ class AsesoresView(ctk.CTkToplevel):
         self.session_user = session_user
         
         self.title("Módulo Asesores - Ingreso Rápido Buró")
-        self.geometry("500x550") # Added some height for spacing
+        self.geometry("500x650") # Height increased to fit simulator button
         self.resizable(False, False)
         
         # Center window
@@ -66,7 +66,12 @@ class AsesoresView(ctk.CTkToplevel):
         # Botón Grabar
         btn_grabar = ctk.CTkButton(self, text="💾 GRABAR CLIENTE", command=self.grabar_cliente,
                                    font=("Arial", 16, "bold"), fg_color="#28A745", hover_color="#218838", height=50)
-        btn_grabar.pack(fill="x", padx=30, pady=(10, 20))
+        btn_grabar.pack(fill="x", padx=30, pady=(10, 5))
+        
+        # Botón Simulador
+        btn_simulador = ctk.CTkButton(self, text="📊 SIMULADOR DE CRÉDITO", command=self.abrir_simulador,
+                                      font=("Arial", 14, "bold"), height=40)
+        btn_simulador.pack(fill="x", padx=30, pady=(5, 20))
 
     def cargar_imagen(self):
         ruta = filedialog.askopenfilename(
@@ -85,6 +90,105 @@ class AsesoresView(ctk.CTkToplevel):
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo leer la imagen.\n{e}", parent=self)
                 
+    def abrir_simulador(self):
+        sim_window = ctk.CTkToplevel(self)
+        sim_window.title("Simulador de Amortización (Sistema Francés)")
+        sim_window.geometry("950x550")
+        sim_window.transient(self)
+        sim_window.grab_set()
+
+        # Inputs Frame
+        frame_inputs = ctk.CTkFrame(sim_window, fg_color="transparent")
+        frame_inputs.pack(pady=20, padx=20, fill="x")
+
+        # Variables
+        monto_var = ctk.StringVar()
+        tasa_var = ctk.StringVar()
+        plazo_var = ctk.StringVar()
+        cuota_var = ctk.StringVar()
+
+        # Monto
+        ctk.CTkLabel(frame_inputs, text="Monto ($):", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        ctk.CTkEntry(frame_inputs, textvariable=monto_var, width=100).grid(row=0, column=1, padx=5, pady=5)
+
+        # Tasa
+        ctk.CTkLabel(frame_inputs, text="Tasa Anual (%):", font=("Arial", 12, "bold")).grid(row=0, column=2, padx=5, pady=5, sticky="e")
+        ctk.CTkEntry(frame_inputs, textvariable=tasa_var, width=100).grid(row=0, column=3, padx=5, pady=5)
+
+        # Plazo
+        ctk.CTkLabel(frame_inputs, text="Plazo (Meses):", font=("Arial", 12, "bold")).grid(row=0, column=4, padx=5, pady=5, sticky="e")
+        ctk.CTkEntry(frame_inputs, textvariable=plazo_var, width=100).grid(row=0, column=5, padx=5, pady=5)
+
+        # Cuota
+        ctk.CTkLabel(frame_inputs, text="Valor de Cuota:", font=("Arial", 12, "bold"), text_color="#1860C3").grid(row=0, column=6, padx=5, pady=5, sticky="e")
+        ctk.CTkEntry(frame_inputs, textvariable=cuota_var, width=120, state="readonly", fg_color="#E8F0FE", text_color="#333333", font=("Arial", 14, "bold")).grid(row=0, column=7, padx=5, pady=5)
+
+        # Configurar Estilos Treeview
+        style = ttk.Style(sim_window)
+        style.theme_use("default")
+        style.configure("Treeview", background="#0A1172", foreground="white", fieldbackground="#0A1172", rowheight=30, borderwidth=0, font=("Arial", 12))
+        style.configure("Treeview.Heading", font=("Arial", 12, "bold"), background="#333333", foreground="white")
+        style.map("Treeview", background=[('selected', '#1f538d')])
+
+        # Treeview Frame
+        frame_tree = ctk.CTkFrame(sim_window)
+        frame_tree.pack(pady=10, padx=20, fill="both", expand=True)
+
+        columnas = ("Mes", "Cuota", "Interés", "Capital", "Saldo")
+        tree = ttk.Treeview(frame_tree, columns=columnas, show="headings", height=10)
+        for col in columnas:
+            tree.heading(col, text=col)
+            tree.column(col, width=130, anchor="center")
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True)
+
+        def calcular_tabla():
+            try:
+                monto = float(monto_var.get())
+                tasa_anual = float(tasa_var.get())
+                plazo = int(plazo_var.get())
+
+                if monto <= 0 or tasa_anual <= 0 or plazo <= 0:
+                    raise ValueError("Los valores deben ser mayores a 0")
+            except ValueError:
+                messagebox.showerror("Error de Entrada", "Por favor ingrese valores numéricos válidos mayores a 0.", parent=sim_window)
+                return
+
+            # Limpiar tabla
+            for item in tree.get_children():
+                tree.delete(item)
+
+            tasa_mensual = (tasa_anual / 100) / 12
+            # Fórmula Sistema Francés
+            cuota = monto * (tasa_mensual * (1 + tasa_mensual)**plazo) / ((1 + tasa_mensual)**plazo - 1)
+            
+            # Formatear y mostrar en el campo superior
+            cuota_var.set(f"${cuota:,.2f}")
+
+            saldo = monto
+            for mes in range(1, plazo + 1):
+                interes = saldo * tasa_mensual
+                capital = cuota - interes
+                saldo = saldo - capital
+                if saldo < 0:
+                    saldo = 0 # Evitar -0.00 en la última cuota
+                
+                tree.insert("", "end", values=(
+                    mes,
+                    f"${cuota:.2f}",
+                    f"${interes:.2f}",
+                    f"${capital:.2f}",
+                    f"${saldo:.2f}"
+                ))
+
+        # Botón Calcular
+        btn_calcular = ctk.CTkButton(sim_window, text="Calcular Tabla", command=calcular_tabla, font=("Arial", 14, "bold"))
+        btn_calcular.pack(pady=10)
+
     def grabar_cliente(self):
         cedula = self.vars["cedula"].get().strip()
         nombres = self.vars["nombres"].get().strip()

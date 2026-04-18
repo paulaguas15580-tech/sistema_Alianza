@@ -2510,7 +2510,7 @@ def abrir_menu_principal(app_root=None):
     col_index += 1
     
     # Filtrar por nivel de acceso para Usuarios
-    if NIVEL_ACCESO == "Administrador":
+    if NIVEL_ACCESO in ["Administrador", "admin"]:
         botones_config.append(("Usuarios", abrir_modulo_usuarios, 5, col_index))
         col_index += 1
     
@@ -2565,6 +2565,10 @@ def abrir_menu_principal(app_root=None):
             # Icono Salir
             salir_raw = Image.open("salir_icon.png")
             salir_icon = ctk.CTkImage(light_image=salir_raw, dark_image=salir_raw, size=(42, 42))
+
+            # Icono Asesores
+            asesores_raw = Image.open("asesores_icon.png")
+            asesores_icon = ctk.CTkImage(light_image=asesores_raw, dark_image=asesores_raw, size=(42, 42))
         except Exception as e:
             print(f"Error cargando iconos: {e}")
             rehab_icon = None
@@ -2577,6 +2581,7 @@ def abrir_menu_principal(app_root=None):
             cartera_icon = None
             usuarios_icon = None
             salir_icon = None
+            asesores_icon = None
     except Exception as e:
         btn_img = None
         rehab_icon = None
@@ -2589,6 +2594,7 @@ def abrir_menu_principal(app_root=None):
         cartera_icon = None
         usuarios_icon = None
         salir_icon = None
+        asesores_icon = None
 
     # Configurar pesos de filas para que los botones se centren verticalmente
     for i in range(2, 6):
@@ -2639,6 +2645,8 @@ def abrir_menu_principal(app_root=None):
             target_icon = micro_icon 
         elif "Salir Sistema" in texto:
             target_icon = salir_icon
+        elif "Asesores" in texto:
+            target_icon = asesores_icon
             
         if target_icon:
             icon_lbl = ctk.CTkLabel(btn, image=target_icon, text="", fg_color="transparent")

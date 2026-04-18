@@ -1,9 +1,9 @@
 ('D:\\Prestamos\\Alianza\\sistema clientes\\Base de '
  'Datos\\build\\SistemaAlianza\\SistemaAlianza.exe',
- False,
+ True,
  False,
  True,
- 'C:\\Users\\Cyberpol\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PyInstaller\\bootloader\\images\\icon-windowed.ico',
+ 'C:\\Users\\Cyberpol\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PyInstaller\\bootloader\\images\\icon-console.ico',
  None,
  False,
  False,
@@ -85,8 +85,8 @@
  [],
  False,
  False,
- 1775165948,
- [('runw.exe',
-   'C:\\Users\\Cyberpol\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\runw.exe',
+ 1775318338,
+ [('run.exe',
+   'C:\\Users\\Cyberpol\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\run.exe',
    'EXECUTABLE')],
  'C:\\Users\\Cyberpol\\AppData\\Local\\Python\\pythoncore-3.14-64\\python314.dll')

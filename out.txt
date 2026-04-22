@@ -1,0 +1,15 @@
+Line 1826: ctk.CTkButton(btn_container, text="📒 EXCEL MICROCRÉDITO", command=exportar_microcredito_excel,
+Line 3068: btn_accion = ctk.CTkButton(f_btns, text="💾 Guardar Nuevo Cliente", command=accion_guardar, fg_color=
+Line 3284: ctk.CTkButton(t, text="💾 GUARDAR DETALLES", command=guardar_popup, fg_color="#28a745", hover_color="
+Line 3323: ctk.CTkButton(nav_frame, text="Volver al Menú", command=win_micro.destroy,
+Line 3649: btn_save = ctk.CTkButton(f_header, text=f"💾 Guardar Ref {col+1}",
+Line 3649: btn_save = ctk.CTkButton(f_header, text=f"💾 Guardar Ref {col+1}",
+Line 3824: ctk.CTkButton(btn_frame, text="💾 Guardar / Actualizar Todo", command=guardar_microcredito, fg_color=
+Line 3824: ctk.CTkButton(btn_frame, text="💾 Guardar / Actualizar Todo", command=guardar_microcredito, fg_color=
+Line 4461: ctk.CTkButton(f, text="Crear Usuario", command=guardar, fg_color="#1860C3", height=40, width=200).pa
+Line 5199: btn_save = ctk.CTkButton(f_btn_proceso, text="💾 GUARDAR CAMBIOS", command=save_rehab_data, fg_color=
+Line 5829: ctk.CTkButton(f_btns, text="💾 GUARDAR GESTIÓN Y CITA", command=guardar_gestion,
+Line 5902: ctk.CTkButton(tab_proc, text="💾 GUARDAR PROCESO", command=guardar_gestion,
+Line 7310: btn_guardar = ctk.CTkButton(frame_btns, text="💾 VALIDAR Y GUARDAR PAGO",
+Line 7532: btn_guardar_con = ctk.CTkButton(
+Line 7547: btn_guardar_con = ctk.CTkButton(frame_acciones_top, text="💾", command=guardar_datos_contrato,

@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
 import datetime
+import psycopg2
 
 class AsesoresView(ctk.CTkToplevel):
     def __init__(self, parent, db_manager, session_user):
@@ -231,10 +232,14 @@ class AsesoresView(ctk.CTkToplevel):
             # Si no existe, procedemos con INSERT
             # Nota: Necesitamos que la tabla Clientes tenga la columna 'imagen_deposito' (BYTEA)
             try:
+                # El envio a la BD debe ser nativo, asegurando primero envolver los bytes crudos a binario para pyscopg2
+                # y usando de modo directo los placeholders en el bloque VALUES (%, %, %, %, %) sin convert_to()
+                imagen_binaria = psycopg2.Binary(self.image_bytes) if self.image_bytes else None
+
                 cursor.execute("""
                     INSERT INTO Clientes (cedula, nombre, fecha_registro, imagen_deposito, asesor)
                     VALUES (%s, %s, %s, %s, %s)
-                """, (cedula, nombres, fecha, psycopg2.Binary(self.image_bytes), self.session_user))
+                """, (str(cedula), str(nombres), str(fecha), imagen_binaria, str(self.session_user)))
                 
                 conn.commit()
                 messagebox.showinfo("Éxito", "Cliente grabado correctamente en la base de datos.", parent=self)

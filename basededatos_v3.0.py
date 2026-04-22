@@ -397,6 +397,17 @@ def migrar_db():
             cursor.execute("ALTER TABLE Clientes ADD COLUMN imagen_deposito BYTEA")
             conn.commit()
             print("Migración completada.")
+
+        # Asegurar columnas necesarias para AsesoresView en la tabla original Clientes
+        try:
+            if 'nombre' not in columnas:
+                cursor.execute("ALTER TABLE Clientes ADD COLUMN nombre TEXT")
+            if 'asesor' not in columnas:
+                cursor.execute("ALTER TABLE Clientes ADD COLUMN asesor TEXT")
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error migrando columnas para AsesoresView: {e}")
             
         if 'referencia_vivienda' not in columnas:
             print("Migrando DB: Agregando columna 'referencia_vivienda'...")
@@ -703,24 +714,65 @@ def formatear_float_str(valor):
 
 # --- VALIDACIONES ---
 
-def validar_datos(cedula, nombre, apertura, nacimiento, ingresos_str, val_cart_str, val_dem_str):
+def validar_datos(*args):
+    (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
+     prof, ing_str, fuente_ing, terreno_val, val_terreno_str, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, obs, 
+     cart, val_cart_str, dem, val_dem_str, just, det_just,
+     casa_val, val_casa_str, hip_casa, local_val, val_local_str, hip_local,
+     ing_str_2, fuente_ing_2, score_buro_str, egresos_str) = args
+
+    # Validaciones obligatorias de campos principales
+    if not cedula.strip() or len(cedula.strip()) != 10 or not cedula.strip().isdigit(): return "La Cédula es obligatoria y debe tener 10 dígitos numéricos."
     if not nombre.strip(): return "El Nombre es obligatorio."
-    if cedula.strip() and (len(cedula.strip()) != 10 or not cedula.strip().isdigit()):
-        return "La Cédula debe tener 10 dígitos numéricos."
-    
+    if not est_civil.strip(): return "Estado Civil es obligatorio."
+    if not cargas.strip(): return "Cargas Familiares es obligatorio."
+    if not telf.strip(): return "Teléfono/Celular es obligatorio."
+    if not dire.strip(): return "Dirección Domicilio es obligatorio."
+    if not parr.strip(): return "Parroquia es obligatoria."
+    if not viv.strip(): return "Tipo de Vivienda es obligatorio."
+    if not ref_viv.strip(): return "Referencia de Vivienda es obligatoria."
+    if not ref1.strip(): return "Referencia Personal 1 es obligatoria."
+    if not ref2.strip(): return "Referencia Personal 2 es obligatoria."
+    if not asesor.strip(): return "Asesor Asignado es obligatorio."
+
+    # Validaciones Pestaña 2
+    if not prof.strip(): return "Profesión/Ocupación es obligatoria."
+    if not ing_str.strip(): return "Ingresos Principales es obligatorio."
+    if not fuente_ing.strip(): return "Fuente de Ingresos es obligatoria."
+    if not egresos_str.strip(): return "Egresos Mensuales es obligatorio."
+    if not score_buro_str.strip(): return "Score Buró es obligatorio."
+
+    if terreno_val == 1:
+        if not val_terreno_str.strip(): return "Debe ingresar Valor Terreno si tiene Terreno."
+        if not hipotecado.strip(): return "Debe ingresar si Terreno está hipotecado."
+    if casa_val == 1:
+        if not val_casa_str.strip(): return "Debe ingresar Valor Casa si tiene Casa/Dep."
+        if not hip_casa.strip(): return "Debe ingresar si Casa está hipotecada."
+    if local_val == 1:
+        if not val_local_str.strip(): return "Debe ingresar Valor Local si tiene Local."
+        if not hip_local.strip(): return "Debe ingresar si Local está hipotecado."
+
+    # Validaciones Pestaña 3
+    if not aper.strip(): return "Fecha de Apertura es obligatoria."
+    try: datetime.datetime.strptime(aper.strip(), "%d/%m/%Y")
+    except ValueError: return "Fecha Apertura incorrecta (DD/MM/YYYY)."
+
+    if not nac.strip() or nac.strip() == "dd/mm/aaaa": return "Fecha de Nacimiento es obligatoria."
+    try: datetime.datetime.strptime(nac.strip(), "%d/%m/%Y")
+    except ValueError: return "Fecha de Nacimiento incorrecta (DD/MM/YYYY)."
+
+    if not num_carpeta.strip(): return "Número de Carpeta es obligatorio."
+
+    if cart == 1 and not val_cart_str.strip(): return "Debe ingresar Valor Cartera Castigada."
+    if dem == 1 and not val_dem_str.strip(): return "Debe ingresar Valor Demanda."
+    if just == 1 and not det_just.strip(): return "Debe ingresar Detalle Justicia."
+
     try:
-        limpiar_moneda(ingresos_str)
+        limpiar_moneda(ing_str)
         limpiar_moneda(val_cart_str)
         limpiar_moneda(val_dem_str)
-    except ValueError: return "Revise los campos numéricos."
+    except ValueError: return "Revise los campos numéricos (solo números o comas/puntos permitidos)."
 
-    if apertura.strip():
-        try: datetime.datetime.strptime(apertura, "%d/%m/%Y")
-        except ValueError: return "Fecha Apertura incorrecta (DD/MM/YYYY)."
-    
-    if nacimiento.strip() and nacimiento != "dd/mm/aaaa":
-        try: datetime.datetime.strptime(nacimiento, "%d/%m/%Y")
-        except ValueError: return "Fecha de Nacimiento incorrecta (DD/MM/YYYY)."
     return True
 
 # --- CRUD ---
@@ -732,7 +784,7 @@ def guardar_cliente(*args):
      casa_val, val_casa_str, hip_casa, local_val, val_local_str, hip_local,
      ing_str_2, fuente_ing_2, score_buro_str, egresos_str) = args
 
-    val = validar_datos(cedula, nombre, aper, nac, ing_str, val_cart_str, val_dem_str)
+    val = validar_datos(*args)
     if val is not True: return False, val
     
     ingresos = limpiar_moneda(ing_str)
@@ -761,14 +813,14 @@ def guardar_cliente(*args):
         with db_connection() as (conn, cursor):
             cursor.execute("""
                 INSERT INTO Clientes (
-                    cedula, ruc, nombre, estado_civil, cargas_familiares, email, telefono, direccion, parroquia, 
+                    cedula, ruc, nombres, estado_civil, cargas_familiares, email, telefono, direccion, parroquia, 
                     tipo_vivienda, referencia_vivienda, profesion, ingresos_mensuales, fuente_ingreso, terreno, valor_terreno, hipotecado, referencia1, referencia2, asesor, fecha_registro, apertura, 
                     "fecha nacimiento", observaciones, 
                     "cartera castigada", "valor cartera", "demanda judicial", "valor demanda", "problemas justicia", "detalle justicia",
                     casa_dep, valor_casa_dep, hipotecado_casa_dep, local, valor_local, hipotecado_local,
                     ingresos_mensuales_2, fuente_ingreso_2, score_buro, egresos, total_disponible
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (cedula, ruc, nombre, est_civil, cargas, email, telf, dire, parr, viv, ref_viv,
                   prof, ingresos, fuente_ing, terreno_val, valor_terreno, hipotecado, ref1, ref2, asesor, aper, num_carpeta, nac, obs, 
                   cart, val_cart, dem, val_dem, just, det_just,
@@ -821,7 +873,7 @@ def actualizar_cliente(id_cliente, *args):
      casa_val, val_casa_str, hip_casa, local_val, val_local_str, hip_local,
      ing_str_2, fuente_ing_2, score_buro_str, egresos_str) = args
 
-    val = validar_datos(cedula, nombre, aper, nac, ing_str, val_cart_str, val_dem_str)
+    val = validar_datos(*args)
     if val is not True: return False, val
     
     ingresos = limpiar_moneda(ing_str)
@@ -869,7 +921,7 @@ def actualizar_cliente(id_cliente, *args):
     except Exception as e: return False, f"Error: {e}"
 
 def eliminar_cliente(id_cliente):
-    if NIVEL_ACCESO != "Administrador": return False, "No tiene permisos para eliminar."
+    if NIVEL_ACCESO not in ["Administrador", "admin"]: return False, "No tiene permisos para eliminar."
     with db_connection() as (conn, cursor):
         # Get cedula for audit before deleting
         cursor.execute("SELECT cedula, nombre FROM Clientes WHERE id = %s", (id_cliente,))
@@ -1135,7 +1187,7 @@ def cargar_seleccion(event):
         # Si se deselecciona, limpiar ID y deshabilitar eliminar
         ID_CLIENTE_SELECCIONADO = None
         try:
-            if NIVEL_ACCESO == "Administrador": btn_eliminar.configure(state='disabled')
+            if NIVEL_ACCESO in ["Administrador", "admin"]: btn_eliminar.configure(state='disabled')
         except: pass
         return
     
@@ -1181,7 +1233,7 @@ def cargar_seleccion(event):
         if val['ruc']: safe_insert(e_ruc, val['ruc'])
         safe_insert(e_nombre, val['nombres'])
         if val['estado_civil']: c_civil.set(val['estado_civil'])
-        if val['cargas_familiares']: safe_insert(e_cargas, val['cargas_familiares'])
+        if val['cargas_familiares'] is not None: safe_insert(e_cargas, val['cargas_familiares'])
         if val['email']: safe_insert(e_email, val['email'])
         if val['telefono']: safe_insert(e_telf, val['telefono'])
         if val['direccion']: safe_insert(e_dir, val['direccion'])
@@ -1189,7 +1241,7 @@ def cargar_seleccion(event):
         if val['tipo_vivienda']: c_vivienda.set(val['tipo_vivienda'])
         if val['profesion']: safe_insert(e_profesion, val['profesion'])
         
-        if val['ingresos_mensuales']: safe_insert(e_ingresos, formatear_float_str(val['ingresos_mensuales']))
+        if val['ingresos_mensuales'] is not None: safe_insert(e_ingresos, formatear_float_str(val['ingresos_mensuales']))
         
         if 'fuente_ingreso' in val.keys() and val['fuente_ingreso']: c_fuente_ingreso.set(val['fuente_ingreso'])
             
@@ -1272,7 +1324,7 @@ def cargar_seleccion(event):
         var_demanda.set(val['demanda judicial'])
         if val['valor demanda']: safe_insert(e_val_demanda, formatear_float_str(val['valor demanda']))
         
-        if val['problemas justicia']: var_justicia.set(val['problemas justicia'])
+        if val['problemas justicia'] is not None: var_justicia.set(val['problemas justicia'])
         if val['detalle justicia']: safe_insert(e_det_justicia, val['detalle justicia'])
         
         toggle_legal_fields()
@@ -1282,7 +1334,7 @@ def cargar_seleccion(event):
         except: pass
         
         try:
-            if val['terreno']: var_terreno.set(val['terreno'])
+            if val['terreno'] is not None: var_terreno.set(val['terreno'])
         except: pass
         
         try:
@@ -1294,7 +1346,7 @@ def cargar_seleccion(event):
         except: pass
         
         try:
-            if val['casa_dep']: var_casa.set(val['casa_dep'])
+            if val['casa_dep'] is not None: var_casa.set(val['casa_dep'])
         except: pass
         
         try:
@@ -1307,25 +1359,25 @@ def cargar_seleccion(event):
         
         # Local Com: local (indice 35 aprox), valor_local (36), hipotecado_local (37)
         try:
-            if val['local']: var_local.set(val['local'])
+            if val['local'] is not None: var_local.set(val['local'])
             if val['valor_local']: safe_insert(e_valor_local, formatear_float_str(val['valor_local']))
             if val['hipotecado_local']: c_hip_local.set(val['hipotecado_local'])
         except: pass
         
         # Ingresos 2: ingresos_mensuales_2 (39), fuente_ingreso_2 (40)
         try:
-            if val['ingresos_mensuales_2']: safe_insert(e_ingresos_2, formatear_float_str(val['ingresos_mensuales_2']))
+            if val['ingresos_mensuales_2'] is not None: safe_insert(e_ingresos_2, formatear_float_str(val['ingresos_mensuales_2']))
             if val['fuente_ingreso_2']: c_fuente_ingreso_2.set(val['fuente_ingreso_2'])
         except: pass
         
         # Score Buro: score_buro (41)
         try:
-            if val['score_buro']: safe_insert(e_score_buro, str(val['score_buro']))
+            if val['score_buro'] is not None: safe_insert(e_score_buro, str(val['score_buro']))
         except: pass
         
         # Egresos: egresos (42)
         try:
-            if val['egresos']: safe_insert(e_egresos, formatear_float_str(val['egresos']))
+            if val['egresos'] is not None: safe_insert(e_egresos, formatear_float_str(val['egresos']))
         except: pass
         
         # Actualizar total disponible (43)
@@ -1341,7 +1393,7 @@ def cargar_seleccion(event):
 
         # Habilitar botón eliminar si es admin
         try:
-            if NIVEL_ACCESO == "Administrador":
+            if NIVEL_ACCESO in ["Administrador", "admin"]:
                 btn_eliminar.configure(state='normal')
         except: pass
 
@@ -1353,7 +1405,7 @@ def cargar_seleccion(event):
     except Exception as e: print(f"Error carga: {e}")
 
     # --- LÓGICA DE PERMISOS Y BLOQUEO AL CARGAR ---
-    if NIVEL_ACCESO == "Administrador":
+    if NIVEL_ACCESO in ["Administrador", "admin"]:
         # Administrador: Todo habilitado
         toggle_inputs_clientes('normal')
         btn_accion.configure(text="📝 Actualizar", command=accion_actualizar, state='normal')
@@ -2993,7 +3045,7 @@ def abrir_modulo_clientes():
             messagebox.showwarning("Atención", "Seleccione un cliente para eliminar.")
             return
             
-        if NIVEL_ACCESO != "Administrador":
+        if NIVEL_ACCESO not in ["Administrador", "admin"]:
             messagebox.showerror("Error", "Solo el Administrador puede eliminar registros.")
             return
 
@@ -3018,7 +3070,7 @@ def abrir_modulo_clientes():
     
     btn_eliminar = ctk.CTkButton(f_btns, text="🗑 Eliminar", command=ui_eliminar_cliente, fg_color="#d9534f", hover_color="#c9302c", state="disabled", width=120)
     # Permiso Administrador (1) para eliminar
-    if NIVEL_ACCESO == "Administrador": 
+    if NIVEL_ACCESO in ["Administrador", "admin"]: 
         btn_eliminar.pack(side='left', padx=15)
 
     
@@ -3050,7 +3102,7 @@ def abrir_modulo_clientes():
     ctk.CTkLabel(fb, text="🔎 Buscar Cliente (Cédula/RUC/Nombre):", font=('Arial', 11, 'bold'), text_color="black").pack(side='left')
     e_busqueda = crear_entry(fb)
     e_busqueda.pack(side='left', fill='x', expand=True, padx=10)
-    e_busqueda.bind('<KeyRelease>', lambda e: filtrar_clientes())
+    e_busqueda.bind('<KeyRelease>', lambda e: buscar_clientes())
 
     ft = ctk.CTkFrame(mid, fg_color="white", corner_radius=10, border_width=1, border_color="#CCCCCC")
     ft.pack(fill='both', expand=True)
@@ -3555,7 +3607,7 @@ def abrir_modulo_microcredito():
             e_hor.configure(state='disabled')
         except: pass
 
-        if 'NIVEL_ACCESO' in globals() and NIVEL_ACCESO == "Administrador":
+        if 'NIVEL_ACCESO' in globals() and NIVEL_ACCESO in ["Administrador", "admin"]:
             # ADMIN: Botón activo para corregir, campos editables (menos fecha/hora)
             btn_widget.configure(state='normal', text=f"💾 Actualizar Ref {num_ref} (Admin)", fg_color="#1860C3")
             for w in widgets_tuple: # widgets_tuple tiene (e_nom, e_tel, e_fec, e_hor...)
@@ -3594,10 +3646,11 @@ def abrir_modulo_microcredito():
         
         ctk.CTkLabel(f_header, text=title, text_color="grey", font=('Arial', 10, 'bold')).pack(side='left', anchor='w')
         
-        btn_save = ctk.CTkButton(f_header, text=f"💾 Guardar Ref {col+1}", 
-                                 fg_color="#28a745", hover_color="#218838", 
-                                 width=120, height=24, font=('Arial', 10, 'bold'))
+        btn_save = ctk.CTkButton(f_header, text=f"💾 Guardar Ref {col+1}",
+                                 command=lambda: None,
+                                 fg_color="#28a745", hover_color="#218838", height=24, font=('Arial', 10, 'bold'))
         btn_save.pack(side='right')
+
         
         # Grid content for compactness
         f_grid = ctk.CTkFrame(f, fg_color="transparent")
@@ -3769,7 +3822,9 @@ def abrir_modulo_microcredito():
     # Botonera General (Fuera del Notebook)
     btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
     btn_frame.pack(pady=10)
-    ctk.CTkButton(btn_frame, text="💾 Guardar / Actualizar Todo", command=guardar_microcredito, fg_color="#465EA6", hover_color="#1860C3", font=('Arial', 12, 'bold'), width=200, height=40).pack()
+    global btn_guardar_micro_todo
+    btn_guardar_micro_todo = ctk.CTkButton(btn_frame, text="💾 Guardar / Actualizar Todo", command=guardar_microcredito, fg_color="#465EA6", hover_color="#1860C3", font=('Arial', 12, 'bold'), width=200, height=40)
+    btn_guardar_micro_todo.pack()
 
     # Secondary logo block removed
 
@@ -3780,7 +3835,7 @@ def seleccionar_status(st):
     
     # RESTRICCIÓN: Si ya está guardado (id_micro_actual no es None) 
     # y el usuario NO es admin, no permitir cambiar el status principal
-    if id_micro_actual is not None and NIVEL_ACCESO != "Administrador":
+    if id_micro_actual is not None and NIVEL_ACCESO not in ["Administrador", "admin"]:
         # Si intenta cambiar a un status distinto del actual cargado en DB
         # Re-cargar el status original y salir
         conn, cursor = conectar_db()
@@ -3827,6 +3882,24 @@ def set_patrimonio_check(s, v_veh, v_casa, v_terr, v_inv):
     if "Terreno" in parts: v_terr.set(1)
     if "Inversiones" in parts: v_inv.set(1)
 
+
+def set_micro_state(state_str):
+    for e in [e_m_ref1_rel, e_m_ref1_tiempo, e_m_ref1_dir, e_m_ref1_cargas,
+              e_m_ref2_rel, e_m_ref2_tiempo, e_m_ref2_dir, e_m_ref2_cargas,
+              e_m_ref1_nom, e_m_ref1_tel, e_m_ref1_fec, e_m_ref1_hor,
+              e_m_ref2_nom, e_m_ref2_tel, e_m_ref2_fec, e_m_ref2_hor,
+              c_m_ref1_viv, c_m_ref1_resp, c_m_ref2_viv, c_m_ref2_resp,
+              t_obs_micro, t_obs_info_micro,
+              e_f_desembolsado, e_f_negado_status, e_f_desistimiento, e_f_comite]:
+        try:
+            if hasattr(e, 'configure'): e.configure(state=state_str)
+        except: pass
+    
+    try:
+        btn_guardar_micro_todo.configure(state=state_str)
+    except: pass
+
+
 def limpiar_form_micro():
     for e in [e_ruc_micro, e_nombre_micro, e_m_ref1_rel, e_m_ref1_tiempo, e_m_ref1_dir, e_m_ref1_cargas,
               e_m_ref2_rel, e_m_ref2_tiempo, e_m_ref2_dir, e_m_ref2_cargas,
@@ -3840,6 +3913,7 @@ def limpiar_form_micro():
     t_obs_micro.delete("1.0", tk.END)
     t_obs_info_micro.delete("1.0", tk.END)
     seleccionar_status(None)
+    set_micro_state('normal')
     
     # Limpiar Info tabs
     if 'e_n_apertura_micro' in globals():
@@ -3847,7 +3921,8 @@ def limpiar_form_micro():
             try:
                 e.configure(state='normal')
                 e.delete(0, tk.END)
-                if e != e_val_apertura_micro: e.configure(state='readonly')
+                if e != e_val_apertura_micro:
+                    if NIVEL_ACCESO not in ['Administrador', 'admin']: e.configure(state='readonly')
             except: pass
         
         e_val_apertura_micro.configure(state='normal'); e_val_apertura_micro.delete(0, tk.END)
@@ -3899,7 +3974,7 @@ def buscar_micro_auto(event=None):
     # 24:cart, 25:v_cart, 26:dem, 27:v_dem, 28:prob, 29:det
     
     query = """
-        SELECT cedula, nombre, ruc, numero_carpeta, valor_apertura, fecha_registro, direccion, 
+        SELECT cedula, nombres, ruc, apertura, valor_apertura, fecha_registro, direccion, 
                estado_civil, cargas_familiares, ingresos_mensuales, fuente_ingreso, ingresos_mensuales_2, fuente_ingreso_2, egresos, total_disponible, 
                casa_dep, valor_casa_dep, hipotecado_casa_dep, terreno, valor_terreno, hipotecado, local, valor_local, hipotecado_local,
                "cartera castigada", "valor cartera", "demanda judicial", "valor demanda", "problemas justicia", "detalle justicia", "score_buro"
@@ -3913,7 +3988,7 @@ def buscar_micro_auto(event=None):
          cursor.execute(query + " WHERE ruc = %s", (val,))
          res = cursor.fetchone()
     elif criteria == "nombre":
-         cursor.execute(query + " WHERE nombre LIKE %s LIMIT 1", (f"%{val}%",))
+         cursor.execute(query + " WHERE nombres LIKE %s LIMIT 1", (f"%{val}%",))
          res = cursor.fetchone()
     
     db_manager.release_connection(conn)
@@ -3957,7 +4032,7 @@ def buscar_micro_auto(event=None):
              e_n_apertura_micro.insert(0, str(num_apertura_caja))
         elif res[3]:
              e_n_apertura_micro.insert(0, res[3])
-        e_n_apertura_micro.configure(state='readonly')
+        if NIVEL_ACCESO not in ['Administrador', 'admin']: e_n_apertura_micro.configure(state='readonly')
 
         # Fecha de Apertura: Clientes.fecha_registro (res[5])
         # Validar formato fecha antes de insertar
@@ -3981,7 +4056,7 @@ def buscar_micro_auto(event=None):
 
         e_f_apertura_micro.configure(state='normal'); e_f_apertura_micro.delete(0, tk.END)
         if fecha_str: e_f_apertura_micro.insert(0, fecha_str)
-        e_f_apertura_micro.configure(state='readonly')
+        if NIVEL_ACCESO not in ['Administrador', 'admin']: e_f_apertura_micro.configure(state='readonly')
 
         # Valor Apertura: Prioridad Caja > Clientes (res[4])
         e_val_apertura_micro.configure(state='normal'); e_val_apertura_micro.delete(0, tk.END)
@@ -3989,7 +4064,7 @@ def buscar_micro_auto(event=None):
              e_val_apertura_micro.insert(0, formatear_float_str(val_apertura_caja))
         elif res[4]: 
              e_val_apertura_micro.insert(0, formatear_float_str(res[4]))
-        e_val_apertura_micro.configure(state='readonly')
+        if NIVEL_ACCESO not in ['Administrador', 'admin']: e_val_apertura_micro.configure(state='readonly')
         
         # Populate New Info Fields
         for e in [e_info_dir, e_info_civil, e_info_cargas, e_info_ing1, e_info_ing2, e_info_egr, e_info_casa, e_info_terr, e_info_local, e_info_cart, e_info_dem, e_info_just, e_info_score]:
@@ -3997,7 +4072,7 @@ def buscar_micro_auto(event=None):
 
         if res[6]: e_info_dir.insert(0, res[6])
         if res[7]: e_info_civil.insert(0, res[7])
-        if res[8]: e_info_cargas.insert(0, str(res[8]))
+        if res[8] is not None: e_info_cargas.insert(0, str(res[8]))
         
         ing1_str = f"{formatear_float_str(res[9] or 0)} / {res[10] or ''}"
         e_info_ing1.insert(0, ing1_str)
@@ -4047,7 +4122,15 @@ def buscar_micro_auto(event=None):
 def cargar_datos_micro(cedula):
     global id_micro_actual
     conn, cursor = conectar_db()
-    cursor.execute("SELECT * FROM Microcreditos WHERE cedula_cliente = %s", (cedula,))
+    cursor.execute("""
+        SELECT id, cedula_cliente, ruc, observaciones, observaciones_info,
+               ref1_relacion, ref1_tiempo_conocer, ref1_direccion, ref1_tipo_vivienda, ref1_cargas, ref1_patrimonio, ref1_responsable,
+               ref2_relacion, ref2_tiempo_conocer, ref2_direccion, ref2_tipo_vivienda, ref2_cargas, ref2_patrimonio, ref2_responsable,
+               ref1_fecha, ref1_hora, ref1_nombre, ref1_telefono,
+               ref2_fecha, ref2_hora, ref2_nombre, ref2_telefono,
+               status, sub_status, fecha_desembolsado, fecha_negado, fecha_desistimiento, fecha_comite
+        FROM Microcreditos WHERE cedula_cliente = %s
+    """, (cedula,))
     row = cursor.fetchone()
     db_manager.release_connection(conn)
     
@@ -4110,8 +4193,15 @@ def cargar_datos_micro(cedula):
             e_f_desembolsado.delete(0, tk.END); e_f_desembolsado.insert(0, row[29] if row[29] else "")
         if len(row) > 30:
             e_f_negado_status.delete(0, tk.END); e_f_negado_status.insert(0, row[30] if row[30] else "")
+
         if len(row) > 31:
             e_f_desistimiento.delete(0, tk.END); e_f_desistimiento.insert(0, row[31] if row[31] else "")
+            
+        if NIVEL_ACCESO not in ['Administrador', 'admin']:
+            set_micro_state('disabled')
+        else:
+            set_micro_state('normal')
+
         if len(row) > 32:
             e_f_comite.delete(0, tk.END); e_f_comite.insert(0, row[32] if row[32] else "")
 
@@ -4121,6 +4211,7 @@ def cargar_datos_micro(cedula):
     else:
         id_micro_actual = None
         seleccionar_status(None)
+        set_micro_state('normal')
         # Limpiar formulario
         t_obs_micro.delete("1.0", tk.END)
         for e in [e_m_ref1_rel, e_m_ref1_tiempo, e_m_ref1_dir, e_m_ref1_cargas, e_m_ref2_rel, e_m_ref2_tiempo, e_m_ref2_dir, e_m_ref2_cargas]:
@@ -4160,7 +4251,11 @@ def guardar_microcredito():
     conn, cursor = conectar_db()
     try:
         # Update Clientes table for valor_apertura AND producto (status)
-        cursor.execute("UPDATE Clientes SET valor_apertura = %s, producto = %s WHERE cedula = %s", (val_apertura, status_micro_actual, cedula_micro_actual))
+        
+        apertura_val = e_n_apertura_micro.get()
+        fecha_aper_val = e_f_apertura_micro.get()
+        cursor.execute("UPDATE Clientes SET valor_apertura = %s, producto = %s, apertura = %s, fecha_registro = %s WHERE cedula = %s", (val_apertura, status_micro_actual, apertura_val, fecha_aper_val, cedula_micro_actual))
+
 
         if id_micro_actual:
             # Update
@@ -4703,7 +4798,7 @@ def abrir_modulo_rehabilitacion():
         if var_finalizado.get() == 1:
             global NIVEL_ACCESO
             # Nivel 1 es Administrador
-            if NIVEL_ACCESO != "Administrador":
+            if NIVEL_ACCESO not in ["Administrador", "admin"]:
                 messagebox.showerror("Seguridad", "Solo un Administrador puede reabrir este proceso.")
                 return
             
@@ -5592,8 +5687,8 @@ def abrir_modulo_intermediacion():
         c_inf = security_widgets['chk_informe']
         e_inf = security_widgets['desc_informe']
         
-        # 1. Admin Access (NIVEL_ACCESO == "Administrador")
-        if NIVEL_ACCESO == "Administrador":
+        # 1. Admin Access (NIVEL_ACCESO in ["Administrador", "admin"])
+        if NIVEL_ACCESO in ["Administrador", "admin"]:
             for w in [c_pre, e_pre, c_apr, e_apr, c_inf, e_inf]:
                 w.configure(state='normal')
             return
@@ -6428,7 +6523,7 @@ def abrir_modulo_caja():
                 except: var_observaciones.set("")
 
                 # PERMISOS: Si no es admin y ya existe, BLOQUEAR TODO
-                if NIVEL_ACCESO != "Administrador":
+                if NIVEL_ACCESO not in ["Administrador", "admin"]:
                     toggle_inputs("disabled")
                 else:
                     toggle_inputs("normal")
@@ -6505,7 +6600,7 @@ def abrir_modulo_caja():
         exists_check = cursor_check.fetchone()
         db_manager.release_connection(conn_check)
 
-        if exists_check and NIVEL_ACCESO != "Administrador":
+        if exists_check and NIVEL_ACCESO not in ["Administrador", "admin"]:
             messagebox.showerror("Error", "No tiene permisos para modificar registros existentes.")
             return
 
@@ -6563,14 +6658,14 @@ def abrir_modulo_caja():
                 if exists:
                     cursor.execute("""
                         UPDATE Caja SET 
-                        fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s
+                        fecha_hora=%s, ruc=%s, nombres_completos=%s, email=%s, direccion=%s, telefono=%s, estado_civil=%s, asesor=%s, buro_credito=%s, buro_archivo_ruta=%s, valor_apertura=%s, numero_apertura=%s, estado_impreso=%s
                         WHERE id = %s
-                    """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], exists[0]))
+                    """, (data[0], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], exists[0]))
                 else:
-                    # INSERT sin la columna conflictiva
+                    # INSERT sin la columna conflictiva (observaciones)
                     cursor.execute("""
-                        INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura) 
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        INSERT INTO Caja (fecha_hora, cedula, ruc, nombres_completos, email, direccion, telefono, estado_civil, asesor, buro_credito, buro_archivo_ruta, valor_apertura, numero_apertura, estado_impreso) 
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, data[:-1])
             
             conn.commit()
@@ -6872,7 +6967,7 @@ def abrir_modulo_caja():
             messagebox.showwarning("Atención", "Debe completar 'Valor de Apertura' y 'No. de Apertura' antes de guardar.")
             return
 
-        if NIVEL_ACCESO != "Administrador":
+        if NIVEL_ACCESO not in ["Administrador", "admin"]:
             messagebox.showerror("Error", "No tiene permisos para modificar datos existentes.")
             return
 

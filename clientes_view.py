@@ -379,6 +379,9 @@ class ClientesView(ft.Column):
         self.ref_1.value = row.get('referencia1') or ""
         self.ref_2.value = row.get('referencia2') or ""
         self.asesor.value = row.get('asesor') or ""
+        
+        # Manejar nulos para imagen_deposito en clientes antiguos
+        self.imagen_deposito_bytes = row.get('imagen_deposito') or None
         self.apertura.value = row.get('apertura') or ""
         self.n_carpeta.value = row.get('numero_carpeta') or ""
         self.producto.value = row.get('producto') or ""

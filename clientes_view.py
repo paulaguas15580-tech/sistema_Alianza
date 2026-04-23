@@ -36,7 +36,18 @@ class ClientesView(ft.Column):
         # --- FORM COMPONENTS (GROUPED) ---
         
         # 1. Datos Personales
-        self.cedula = ft.TextField(label="Cédula", border_radius=8)
+        self.alerta_cliente_existe = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="orange"),
+                ft.Text("⚠️ Cliente ya existe en la base de datos", color="orange", weight="bold", size=14)
+            ], spacing=8),
+            bgcolor="#FFF3E0",
+            border_radius=8,
+            padding=ft.padding.symmetric(horizontal=14, vertical=8),
+            border=ft.border.all(1.5, "orange"),
+            visible=False
+        )
+        self.cedula = ft.TextField(label="Cédula", border_radius=8, on_change=self.cedula_changed)
         self.ruc = ft.TextField(label="RUC", border_radius=8)
         self.nombre = ft.TextField(label="Nombres y Apellidos", border_radius=8)
         self.fecha_nac = ft.TextField(label="F. Nacim (DD/MM/YYYY)", border_radius=8)
@@ -113,6 +124,7 @@ class ClientesView(ft.Column):
                     content=ft.Container(
                         content=ft.Column([
                             ft.Row([self.cedula, self.ruc]),
+                            self.alerta_cliente_existe,
                             self.nombre,
                             ft.Row([self.fecha_nac, self.estado_civil, self.cargas]),
                             ft.Divider(),
@@ -273,6 +285,26 @@ class ClientesView(ft.Column):
 
     def toggle_justicia(self, e):
         self.det_justicia.visible = self.chk_justicia.value
+        self.update()
+
+    def cedula_changed(self, e):
+        """Busca la cedula en la BD al escribir y alerta si ya existe."""
+        cedula = self.cedula.value.strip()
+        if len(cedula) < 8:
+            self.alerta_cliente_existe.visible = False
+            self.update()
+            return
+        try:
+            resultado = db.buscar_cliente_por_cedula(cedula)
+            if resultado:
+                # Cliente encontrado - llenar nombre y mostrar alerta
+                self.nombre.value = resultado.get('nombre', '')
+                self.alerta_cliente_existe.visible = True
+            else:
+                self.alerta_cliente_existe.visible = False
+        except Exception as ex:
+            print(f"Error buscando cedula: {ex}")
+            self.alerta_cliente_existe.visible = False
         self.update()
 
     def open_add(self, e):

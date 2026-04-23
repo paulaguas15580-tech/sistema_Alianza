@@ -40,7 +40,16 @@ class AsesoresView(ctk.CTkToplevel):
         # Cédula
         ctk.CTkLabel(frame, text="Número de Cédula:", font=("Arial", 12, "bold")).pack(anchor="w", pady=(0, 5))
         self.e_cedula = ctk.CTkEntry(frame, textvariable=self.vars["cedula"], width=1000) # Use max width, frame limits it
-        self.e_cedula.pack(fill="x", pady=(0, 15))
+        self.e_cedula.pack(fill="x", pady=(0, 2))
+        
+        # Aviso de cliente existente
+        self.lbl_aviso_cedula = ctk.CTkLabel(frame, text="⚠️ Cliente ya registrado con otro asesor",
+                                             text_color="orange", fg_color="#FFF3E0",
+                                             font=('Arial', 10, 'bold'), corner_radius=6)
+        self.lbl_aviso_cedula.pack(fill='x', pady=(0, 10))
+        self.lbl_aviso_cedula.pack_forget()
+
+        self.e_cedula.bind('<KeyRelease>', self.verificar_cliente_tiempo_real)
         
         # Nombres
         ctk.CTkLabel(frame, text="Nombres y Apellidos Completos:", font=("Arial", 12, "bold")).pack(anchor="w", pady=(0, 5))
@@ -65,9 +74,9 @@ class AsesoresView(ctk.CTkToplevel):
         self.lbl_archivo.pack()
         
         # Botón Grabar
-        btn_grabar = ctk.CTkButton(self, text="💾 GRABAR CLIENTE", command=self.grabar_cliente,
+        self.btn_grabar = ctk.CTkButton(self, text="💾 GRABAR CLIENTE", command=self.grabar_cliente,
                                    font=("Arial", 16, "bold"), fg_color="#28A745", hover_color="#218838", height=50)
-        btn_grabar.pack(fill="x", padx=30, pady=(10, 5))
+        self.btn_grabar.pack(fill="x", padx=30, pady=(10, 5))
         
         # Botón Simulador
         btn_simulador = ctk.CTkButton(self, text="📊 SIMULADOR DE CRÉDITO", command=self.abrir_simulador,
@@ -186,9 +195,37 @@ class AsesoresView(ctk.CTkToplevel):
                     f"${saldo:.2f}"
                 ))
 
-        # Botón Calcular
         btn_calcular = ctk.CTkButton(sim_window, text="Calcular Tabla", command=calcular_tabla, font=("Arial", 14, "bold"))
         btn_calcular.pack(pady=10)
+
+    def verificar_cliente_tiempo_real(self, event=None):
+        ced = self.vars["cedula"].get().strip()
+        if len(ced) >= 8:
+            conn = None
+            try:
+                conn = self.db_manager.get_connection()
+                cursor = conn.cursor()
+                # Buscar en Clientes usando tanto nombres como nombre
+                cursor.execute("SELECT nombres, nombre, asesor FROM Clientes WHERE cedula = %s LIMIT 1", (ced,))
+                row = cursor.fetchone()
+                if row:
+                    # Llenar nombre si está vacío
+                    if not self.vars["nombres"].get().strip():
+                        # Priorizar nombres
+                        val_nombre = row[0] if row[0] else (row[1] if row[1] else "")
+                        self.vars["nombres"].set(val_nombre)
+                    
+                    asesor = row[2] if row[2] else "Desconocido"
+                    self.lbl_aviso_cedula.configure(text=f"⚠️ Cliente ya registrado con: {asesor}")
+                    self.lbl_aviso_cedula.pack(fill='x', pady=(0, 10))
+                    self.btn_grabar.configure(state="disabled", fg_color="gray")
+                    return
+            except Exception as e:
+                print(f"Error en verificación tiempo real asesores: {e}")
+            finally:
+                if conn: self.db_manager.release_connection(conn)
+        self.lbl_aviso_cedula.pack_forget()
+        self.btn_grabar.configure(state="normal", fg_color="#28A745")
 
     def grabar_cliente(self):
         cedula = self.vars["cedula"].get().strip()
@@ -217,12 +254,12 @@ class AsesoresView(ctk.CTkToplevel):
             cursor = conn.cursor()
             
             # Validación: Verificar si la cédula ya existe
-            # Se usa el campo 'nombre' como nombre ('nombres' en otras, pero según esquema: nombre TEXT NOT NULL)
-            cursor.execute("SELECT nombre, asesor FROM Clientes WHERE cedula = %s", (cedula,))
+            # Se usan ambos campos nombres y nombre por compatibilidad
+            cursor.execute("SELECT nombres, nombre, asesor FROM Clientes WHERE cedula = %s", (cedula,))
             row = cursor.fetchone()
             
             if row:
-                asesor_registro = row[1] if row[1] else "Desconocido"
+                asesor_registro = row[2] if row[2] else "Desconocido"
                 messagebox.showerror("Registro Denegado", 
                                      f"El cliente con cédula {cedula} ya se encuentra registrado en el sistema.\n\n"
                                      f"Asesor a cargo: {asesor_registro}", parent=self)
@@ -237,9 +274,9 @@ class AsesoresView(ctk.CTkToplevel):
                 imagen_binaria = psycopg2.Binary(self.image_bytes) if self.image_bytes else None
 
                 cursor.execute("""
-                    INSERT INTO Clientes (cedula, nombre, fecha_registro, imagen_deposito, asesor)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (str(cedula), str(nombres), str(fecha), imagen_binaria, str(self.session_user)))
+                    INSERT INTO Clientes (cedula, nombres, nombre, fecha_registro, imagen_deposito, asesor)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (str(cedula), str(nombres), str(nombres), str(fecha), imagen_binaria, str(self.session_user)))
                 
                 conn.commit()
                 messagebox.showinfo("Éxito", "Cliente grabado correctamente en la base de datos.", parent=self)

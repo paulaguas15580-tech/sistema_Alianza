@@ -74,6 +74,18 @@ def verificar_integridad_db():
                     print(f"Info/Error al agregar {col_nombre}: {e}")
             else:
                 print(f"Verificado: '{col_nombre}' ya existe.")
+        
+        # Verificar columna 'observaciones' en Caja
+        try:
+            cols_caja = db_manager.get_column_names(cursor, "Caja")
+            # Convertir a minúsculas por si acaso
+            cols_caja = [c.lower() for c in cols_caja]
+            if "observaciones" not in cols_caja:
+                print("Reparando: Agregando columna faltante 'observaciones' en Caja...")
+                cursor.execute("ALTER TABLE Caja ADD COLUMN observaciones TEXT")
+                print("Columna 'observaciones' agregada a Caja.")
+        except Exception as e_caja:
+            print(f"Info/Error al verificar Caja: {e_caja}")
 
         conn.commit()
         db_manager.release_connection(conn)
@@ -2816,6 +2828,37 @@ def abrir_modulo_clientes():
     ctk.CTkLabel(c1_1, text="Cédula:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_cedula = crear_entry(c1_1); e_cedula.pack(fill='x')
     e_cedula.bind('<Return>', saltar_campo)
+
+    # Aviso de cliente existente
+    lbl_aviso_cedula = ctk.CTkLabel(c1_1, text="⚠️ Cliente ya existe",
+                                    text_color="orange", fg_color="#FFF3E0",
+                                    font=('Arial', 10, 'bold'), corner_radius=6)
+    lbl_aviso_cedula.pack(fill='x', pady=(1,2))
+    lbl_aviso_cedula.pack_forget()  # oculto por defecto
+
+    def on_cedula_keyrelease(event=None):
+        ced = e_cedula.get().strip()
+        if len(ced) >= 8:
+            try:
+                conn_c, cursor_c = conectar_db()
+                cursor_c.execute("SELECT nombres, nombre, ruc FROM Clientes WHERE cedula = %s LIMIT 1", (ced,))
+                row_c = cursor_c.fetchone()
+                db_manager.release_connection(conn_c)
+                if row_c:
+                    # Llenar nombre si está vacío
+                    if not e_nombre.get().strip():
+                        e_nombre.configure(state='normal')
+                        e_nombre.delete(0, tk.END)
+                        # Priorizar 'nombres' sobre 'nombre'
+                        nombre_val = row_c[0] if row_c[0] else (row_c[1] if row_c[1] else "")
+                        e_nombre.insert(0, nombre_val)
+                    lbl_aviso_cedula.pack(fill='x', pady=(1,2))
+                    return
+            except Exception as ex:
+                print(f"Error buscar cedula clientes: {ex}")
+        lbl_aviso_cedula.pack_forget()
+
+    e_cedula.bind('<KeyRelease>', on_cedula_keyrelease)
     
     ctk.CTkLabel(c1_1, text="RUC:", text_color="black", fg_color="transparent").pack(anchor='w')
     e_ruc = crear_entry(c1_1); e_ruc.pack(fill='x')
@@ -6118,7 +6161,7 @@ def abrir_modulo_consultas():
             
             # Si no hay microcrédito, buscar cliente básico
             else:
-                cursor.execute("SELECT nombre FROM Clientes WHERE cedula = %s", (cedula,))
+                cursor.execute("SELECT nombres, nombre FROM Clientes WHERE cedula = %s", (cedula,))
                 cli = cursor.fetchone()
                 if cli: 
                     status = "CLIENTE REGISTRADO"
@@ -6463,6 +6506,8 @@ def abrir_modulo_caja():
             toggle_buro_btn()
             try: btn_crear_nuevo.grid_remove()
             except: pass
+            try: lbl_aviso_cedula_caja.pack_forget()
+            except: pass
             
             try:
                 btn_imprimir_con.configure(state='disabled')
@@ -6471,7 +6516,7 @@ def abrir_modulo_caja():
 
         conn, cursor = conectar_db()
         # 1. Intentar cargar desde Clientes para completar datos básicos
-        cursor.execute("SELECT nombre, ruc, email, direccion, telefono, estado_civil FROM Clientes WHERE cedula = %s", (cedula,))
+        cursor.execute("SELECT nombres, nombre, ruc, email, direccion, telefono, estado_civil FROM Clientes WHERE cedula = %s", (cedula,))
         cli = cursor.fetchone()
         
         # 2. Intentar cargar desde Caja (sobrescribe lo anterior si hay datos específicos de Caja)
@@ -6481,19 +6526,23 @@ def abrir_modulo_caja():
 
         if cli or caja:
             # CLIENTE EXISTENTE (en Clientes o Caja)
+            try: lbl_aviso_cedula_caja.pack(fill='x', pady=(0, 5))
+            except: pass
             try: btn_crear_nuevo.grid_remove()
             except: pass
             
             # Cargar datos de Cliente primero
             if cli:
-                var_nombres.set(cli[0] or "")
-                var_ruc.set(cli[1] or "")
+                # Priorizar 'nombres' sobre 'nombre'
+                nombre_val = cli[0] if cli[0] else (cli[1] if cli[1] else "")
+                var_nombres.set(nombre_val)
+                var_ruc.set(cli[2] or "")
                 var_cedula.set(cedula)
-                var_email.set(cli[2] or "")
-                var_direccion.set(cli[3] or "")
-                var_telefono.set(cli[4] or "")
-                if cli[5] in ["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"]:
-                    var_estado_civil.set(cli[5])
+                var_email.set(cli[3] or "")
+                var_direccion.set(cli[4] or "")
+                var_telefono.set(cli[5] or "")
+                if cli[6] in ["Soltero", "Casado", "Viudo", "Divorciado", "Union Libre"]:
+                    var_estado_civil.set(cli[6])
             
             if caja:
                 # Si existe en Caja, BLOQUEAR FECHA y cargar full datos
@@ -6554,6 +6603,8 @@ def abrir_modulo_caja():
             # 3. Mostrar Botón "CREAR NUEVO"
             try: btn_crear_nuevo.grid()
             except: pass
+            try: lbl_aviso_cedula_caja.pack_forget()
+            except: pass
             
             messagebox.showinfo("Nuevo", "Cédula no encontrada.\nPresione '🆕 CREAR NUEVO CLIENTE' para registrar.", parent=win)
 
@@ -6594,15 +6645,24 @@ def abrir_modulo_caja():
             messagebox.showwarning("Atención", "Ingrese la identificación del cliente (Cédula o RUC).")
             return
             
+        # NUEVO: Validar todos los campos (incluyendo Buró) antes de guardar
+        if not validar_datos_caja(show_error=True):
+            return
+            
         # PERMISO: Solo admin puede modificar registros existentes en Caja
         conn_check, cursor_check = conectar_db()
         cursor_check.execute("SELECT id FROM Caja WHERE cedula = %s OR (cedula = '' AND ruc = %s)", (ced, ruc))
         exists_check = cursor_check.fetchone()
         db_manager.release_connection(conn_check)
 
-        if exists_check and NIVEL_ACCESO not in ["Administrador", "admin"]:
-            messagebox.showerror("Error", "No tiene permisos para modificar registros existentes.")
-            return
+        if exists_check:
+            if NIVEL_ACCESO not in ["Administrador", "admin"]:
+                messagebox.showerror("Error", "No tiene permisos para modificar registros existentes.")
+                return
+            else:
+                # Si es admin, pedir confirmación antes de actualizar
+                if not messagebox.askyesno("Confirmar Actualización", "Este cliente ya tiene un registro en Caja. ¿Desea actualizar la información existente?"):
+                    return
 
         # Validación numérica
         if ced and not ced.isdigit():
@@ -7461,7 +7521,15 @@ def abrir_modulo_caja():
     # Cédula
     ctk.CTkLabel(col_left, text="Cédula:", font=('Arial', 12, 'bold'), text_color="#34495E").pack(anchor='w', pady=(5,0))
     e_ced = ctk.CTkEntry(col_left, textvariable=var_cedula, height=35, fg_color="white", text_color="black")
-    e_ced.pack(fill='x', pady=(0, 10))
+    e_ced.pack(fill='x', pady=(0, 2))
+    
+    # Aviso de cliente existente en Caja
+    lbl_aviso_cedula_caja = ctk.CTkLabel(col_left, text="⚠️ Cliente ya registrado",
+                                         text_color="orange", fg_color="#FFF3E0",
+                                         font=('Arial', 10, 'bold'), corner_radius=6)
+    lbl_aviso_cedula_caja.pack(fill='x', pady=(0, 8))
+    lbl_aviso_cedula_caja.pack_forget() # Oculto por defecto
+
     e_ced.bind('<KeyRelease>', buscar_cliente_caja)
     
     # RUC
@@ -7812,9 +7880,11 @@ def abrir_ventana_recaudacion():
             credito = cursor.fetchone()
             
             # Buscar nombre del cliente
-            cursor.execute("SELECT nombre FROM Clientes WHERE cedula = %s", (ced,))
+            cursor.execute("SELECT nombres, nombre FROM Clientes WHERE cedula = %s", (ced,))
             cli = cursor.fetchone()
-            if cli: var_nombre_cliente.set(cli[0])
+            if cli: 
+                # Priorizar 'nombres'
+                var_nombre_cliente.set(cli[0] if cli[0] else (cli[1] if cli[1] else ""))
             
             if not credito:
                 messagebox.showwarning("Aviso", "Este cliente no tiene un crédito marcado como 'Desembolsado'.", parent=toplevel)

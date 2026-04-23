@@ -429,10 +429,12 @@ def buscar_cliente_por_cedula(cedula):
     """Busca un cliente exacto por cédula. Retorna dict con datos o None si no existe."""
     conn, cursor = conectar_db()
     try:
-        cursor.execute("SELECT id, cedula, nombre, ruc FROM Clientes WHERE cedula = %s LIMIT 1", (cedula.strip(),))
+        cursor.execute("SELECT id, cedula, nombres, nombre, ruc FROM Clientes WHERE cedula = %s LIMIT 1", (cedula.strip(),))
         row = cursor.fetchone()
         if row:
-            return {'id': row[0], 'cedula': row[1], 'nombre': row[2] or '', 'ruc': row[3]}
+            # Priorizar 'nombres' sobre 'nombre'
+            nombre_val = row[2] if row[2] else (row[3] if row[3] else "")
+            return {'id': row[0], 'cedula': row[1], 'nombre': nombre_val, 'ruc': row[4]}
         return None
     except Exception as ex:
         print(f"Error buscar_cliente_por_cedula: {ex}")

@@ -52,7 +52,20 @@ def verificar_integridad_db():
             ("tasa_interes", "REAL"),
             ("plazo_meses", "INTEGER"),
             ("valor_cuota", "REAL"),
-            ("dia_pago", "INTEGER")
+            ("dia_pago", "INTEGER"),
+            # Campos nuevos pestaña Visitas
+            ("vis_tiempo_reside", "TEXT"),
+            ("vis_m2_constru", "TEXT"),
+            ("vis_avaluo", "TEXT"),
+            ("vis_hipoteca", "TEXT"),
+            ("vis_avaluo_enseres", "TEXT"),
+            ("vis_pisos", "TEXT"),
+            ("vis_donde_vive", "TEXT"),
+            ("vis_caracteristicas", "TEXT"),
+            ("vis_destino_credito", "TEXT"),
+            ("vis_hora", "TEXT"),
+            ("vis_observaciones", "TEXT"),
+            ("vis_imagenes_rutas", "TEXT"),
         ]
         
         # Obtener columnas existentes (abstracted by db_manager)
@@ -2851,7 +2864,7 @@ def abrir_modulo_clientes():
                         e_nombre.delete(0, tk.END)
                         # Priorizar 'nombres' sobre 'nombre'
                         nombre_val = row_c[0] if row_c[0] else (row_c[1] if row_c[1] else "")
-                        e_nombre.insert(0, nombre_val)
+                        e_nombre.insert(0, str(nombre_val))
                     lbl_aviso_cedula.pack(fill='x', pady=(1,2))
                     return
             except Exception as ex:
@@ -3770,7 +3783,34 @@ def abrir_modulo_microcredito():
 
     # --- PESTAÑA 3: VISITAS ---
     nb.add("Visitas")
-    tab_visitas = nb.tab("Visitas")
+    tab_vis_parent = nb.tab("Visitas")
+    
+    global list_vis_imagenes_rutas
+    global lbl_vis_imgs
+    
+    # Usar ScrollableFrame para que quepan todos los campos y fotos
+    tab_visitas = ctk.CTkScrollableFrame(tab_vis_parent, fg_color="transparent")
+    tab_visitas.pack(fill='both', expand=True)
+    
+    list_vis_imagenes_rutas = []
+    
+    def seleccionar_imagenes_visita():
+        rutas = filedialog.askopenfilenames(
+            title="Seleccionar Imágenes de la Visita",
+            filetypes=[("Imágenes", "*.jpg *.jpeg *.png *.bmp"), ("Todos los archivos", "*.*")]
+        )
+        if rutas:
+            for r in rutas:
+                if r not in list_vis_imagenes_rutas:
+                    list_vis_imagenes_rutas.append(r)
+            actualizar_label_imagenes_visita()
+
+    def actualizar_label_imagenes_visita():
+        cant = len(list_vis_imagenes_rutas)
+        if cant == 0:
+            lbl_vis_imgs.configure(text="No hay imágenes seleccionadas", text_color="gray")
+        else:
+            lbl_vis_imgs.configure(text=f"✅ {cant} imágenes seleccionadas", text_color="#28a745")
     
     ctk.CTkLabel(tab_visitas, text="Agendar Visita / Ubicación", text_color="#1860C3", font=('Arial', 12, 'bold')).pack(anchor='w', pady=(0,10))
     
@@ -3799,6 +3839,90 @@ def abrir_modulo_microcredito():
             messagebox.showinfo("Mapa", "Ingrese una dirección para buscar.")
 
     ctk.CTkButton(fm, text="🗺️ Ver en Google Maps", command=abrir_mapa, fg_color="#465EA6", hover_color="#1860C3").pack(side='left', padx=10)
+
+    # --- NUEVOS CAMPOS DE VISITA ---
+    ctk.CTkLabel(tab_visitas, text="Datos del Inmueble y Visita", text_color="#1860C3", 
+                 font=('Arial', 12, 'bold')).pack(anchor='w', pady=(15, 5))
+
+    # Frame con 2 columnas para los campos
+    fv_grid = ctk.CTkFrame(tab_visitas, fg_color="transparent")
+    fv_grid.pack(fill='x', pady=5)
+    fv_grid.grid_columnconfigure(0, weight=1)
+    fv_grid.grid_columnconfigure(1, weight=1)
+
+    def _lbl(parent, text, row, col):
+        ctk.CTkLabel(parent, text=text, text_color="black", font=('Arial', 11, 'bold')
+                     ).grid(row=row, column=col, sticky='w', padx=(10, 5), pady=(6, 0))
+
+    def _entry(parent, row, col, width=180):
+        e = ctk.CTkEntry(parent, fg_color="white", text_color="black", border_color="grey", width=width)
+        e.grid(row=row+1, column=col, sticky='ew', padx=(10, 10), pady=(0, 4))
+        return e
+
+    # Col izquierda
+    _lbl(fv_grid, "Tiempo que reside:", 0, 0)
+    global e_vis_tiempo_reside
+    e_vis_tiempo_reside = _entry(fv_grid, 0, 0)
+
+    _lbl(fv_grid, "M² Construidos:", 2, 0)
+    global e_vis_m2_constru
+    e_vis_m2_constru = _entry(fv_grid, 2, 0)
+
+    _lbl(fv_grid, "Avalúo:", 4, 0)
+    global e_vis_avaluo
+    e_vis_avaluo = _entry(fv_grid, 4, 0)
+
+    _lbl(fv_grid, "Hipoteca:", 6, 0)
+    global e_vis_hipoteca
+    e_vis_hipoteca = _entry(fv_grid, 6, 0)
+
+    _lbl(fv_grid, "Avalúo Enseres:", 8, 0)
+    global e_vis_avaluo_enseres
+    e_vis_avaluo_enseres = _entry(fv_grid, 8, 0)
+
+    _lbl(fv_grid, "Hora Visita:", 10, 0)
+    global e_vis_hora
+    e_vis_hora = _entry(fv_grid, 10, 0)
+
+    # Col derecha
+    _lbl(fv_grid, "Pisos:", 0, 1)
+    global e_vis_pisos
+    e_vis_pisos = _entry(fv_grid, 0, 1)
+
+    _lbl(fv_grid, "Donde vive:", 2, 1)
+    global e_vis_donde_vive
+    e_vis_donde_vive = _entry(fv_grid, 2, 1)
+
+    _lbl(fv_grid, "Características del Inmueble:", 4, 1)
+    global e_vis_caracteristicas
+    e_vis_caracteristicas = _entry(fv_grid, 4, 1)
+
+    _lbl(fv_grid, "Destino del Crédito:", 6, 1)
+    global e_vis_destino_credito
+    e_vis_destino_credito = _entry(fv_grid, 6, 1)
+
+    # Observaciones (ancho completo)
+    ctk.CTkLabel(tab_visitas, text="Observaciones de Visita:", text_color="black",
+                 font=('Arial', 11, 'bold')).pack(anchor='w', padx=10, pady=(6, 0))
+    global t_vis_observaciones
+    t_vis_observaciones = ctk.CTkTextbox(tab_visitas, height=70, fg_color="white", text_color="black",
+                                         border_color="grey", border_width=1)
+    t_vis_observaciones.pack(fill='x', padx=10, pady=(0, 10))
+
+    # Botón para subir imágenes
+    ctk.CTkLabel(tab_visitas, text="Documentación Fotográfica:", text_color="#1860C3", 
+                 font=('Arial', 12, 'bold')).pack(anchor='w', pady=(10, 5))
+    
+    f_imgs = ctk.CTkFrame(tab_visitas, fg_color="transparent")
+    f_imgs.pack(fill='x', pady=5)
+    
+    btn_subir_imgs = ctk.CTkButton(f_imgs, text="📸 Subir Imágenes de Visita", 
+                                   command=seleccionar_imagenes_visita,
+                                   fg_color="#6C757D", hover_color="#5A6268")
+    btn_subir_imgs.pack(side='left', padx=10)
+    
+    lbl_vis_imgs = ctk.CTkLabel(f_imgs, text="No hay imágenes seleccionadas", text_color="gray", font=('Arial', 11, 'italic'))
+    lbl_vis_imgs.pack(side='left', padx=10)
 
 
     # --- PESTAÑA 4: STATUS ---
@@ -4164,6 +4288,7 @@ def buscar_micro_auto(event=None):
 
 def cargar_datos_micro(cedula):
     global id_micro_actual
+    global list_vis_imagenes_rutas
     conn, cursor = conectar_db()
     cursor.execute("""
         SELECT id, cedula_cliente, ruc, observaciones, observaciones_info,
@@ -4171,7 +4296,9 @@ def cargar_datos_micro(cedula):
                ref2_relacion, ref2_tiempo_conocer, ref2_direccion, ref2_tipo_vivienda, ref2_cargas, ref2_patrimonio, ref2_responsable,
                ref1_fecha, ref1_hora, ref1_nombre, ref1_telefono,
                ref2_fecha, ref2_hora, ref2_nombre, ref2_telefono,
-               status, sub_status, fecha_desembolsado, fecha_negado, fecha_desistimiento, fecha_comite
+               status, sub_status, fecha_desembolsado, fecha_negado, fecha_desistimiento, fecha_comite,
+               vis_tiempo_reside, vis_m2_constru, vis_avaluo, vis_hipoteca, vis_avaluo_enseres,
+               vis_pisos, vis_donde_vive, vis_caracteristicas, vis_destino_credito, vis_hora, vis_observaciones
         FROM Microcreditos WHERE cedula_cliente = %s
     """, (cedula,))
     row = cursor.fetchone()
@@ -4248,6 +4375,30 @@ def cargar_datos_micro(cedula):
         if len(row) > 32:
             e_f_comite.delete(0, tk.END); e_f_comite.insert(0, row[32] if row[32] else "")
 
+        # --- Campos nuevos de Visita (indices 33-43) ---
+        try:
+            vis_fields = [
+                (e_vis_tiempo_reside, 33), (e_vis_m2_constru, 34),
+                (e_vis_avaluo, 35), (e_vis_hipoteca, 36), (e_vis_avaluo_enseres, 37),
+                (e_vis_pisos, 38), (e_vis_donde_vive, 39), (e_vis_caracteristicas, 40),
+                (e_vis_destino_credito, 41), (e_vis_hora, 42)
+            ]
+            for widget, idx in vis_fields:
+                if len(row) > idx:
+                    widget.delete(0, tk.END)
+                    widget.insert(0, str(row[idx]) if row[idx] else "")
+            if len(row) > 43:
+                t_vis_observaciones.delete("1.0", tk.END)
+                t_vis_observaciones.insert("1.0", row[43] if row[43] else "")
+            
+            # Cargar rutas de imágenes de visita
+            list_vis_imagenes_rutas = []
+            if len(row) > 44 and row[44]:
+                list_vis_imagenes_rutas = str(row[44]).split(";")
+            actualizar_label_imagenes_visita()
+        except Exception as e_vis:
+            print(f"Info: campos visita no cargados: {e_vis}")
+
         # --- CARGA DATOS DESEMBOLSADO ---
         # (Ya no se cargan aquí, se cargan en el Popup al abrirlo)
         pass
@@ -4257,8 +4408,19 @@ def cargar_datos_micro(cedula):
         set_micro_state('normal')
         # Limpiar formulario
         t_obs_micro.delete("1.0", tk.END)
-        for e in [e_m_ref1_rel, e_m_ref1_tiempo, e_m_ref1_dir, e_m_ref1_cargas, e_m_ref2_rel, e_m_ref2_tiempo, e_m_ref2_dir, e_m_ref2_cargas]:
-            e.delete(0, tk.END)
+        for e in [e_m_ref1_rel, e_m_ref1_tiempo, e_m_ref1_dir, e_m_ref1_cargas, 
+                  e_m_ref2_rel, e_m_ref2_tiempo, e_m_ref2_dir, e_m_ref2_cargas,
+                  e_vis_tiempo_reside, e_vis_m2_constru, e_vis_avaluo, e_vis_hipoteca, 
+                  e_vis_avaluo_enseres, e_vis_hora, e_vis_pisos, e_vis_donde_vive, 
+                  e_vis_caracteristicas, e_vis_destino_credito]:
+            try: e.delete(0, tk.END)
+            except: pass
+        try: t_vis_observaciones.delete("1.0", tk.END)
+        except: pass
+        
+        list_vis_imagenes_rutas = []
+        try: actualizar_label_imagenes_visita()
+        except: pass
         for c in [c_m_ref1_viv, c_m_ref1_resp, c_m_ref2_viv, c_m_ref2_resp]: c.set('')
         set_patrimonio_check("", var_m_ref1_vehiculo, var_m_ref1_casa, var_m_ref1_terreno, var_m_ref1_inver)
         set_patrimonio_check("", var_m_ref2_vehiculo, var_m_ref2_casa, var_m_ref2_terreno, var_m_ref2_inver)
@@ -4281,6 +4443,27 @@ def guardar_microcredito():
     # Save Valor Apertura to Clientes table
     val_apertura = limpiar_moneda(e_val_apertura_micro.get())
     
+    # Nuevos campos de visita
+    try:
+        v_tiempo_reside   = e_vis_tiempo_reside.get().strip()
+        v_m2_constru      = e_vis_m2_constru.get().strip()
+        v_avaluo          = e_vis_avaluo.get().strip()
+        v_hipoteca        = e_vis_hipoteca.get().strip()
+        v_avaluo_enseres  = e_vis_avaluo_enseres.get().strip()
+        v_pisos           = e_vis_pisos.get().strip()
+        v_donde_vive      = e_vis_donde_vive.get().strip()
+        v_caracteristicas = e_vis_caracteristicas.get().strip()
+        v_destino_credito = e_vis_destino_credito.get().strip()
+        v_hora_visita     = e_vis_hora.get().strip()
+        v_obs_visita      = t_vis_observaciones.get("1.0", tk.END).strip()
+        
+        # Procesar imágenes de visita (Guardar rutas separadas por punto y coma)
+        v_imgs_rutas = ";".join(list_vis_imagenes_rutas)
+    except Exception:
+        v_tiempo_reside = v_m2_constru = v_avaluo = v_hipoteca = v_avaluo_enseres = ""
+        v_pisos = v_donde_vive = v_caracteristicas = v_destino_credito = v_hora_visita = v_obs_visita = ""
+        v_imgs_rutas = ""
+    
     vals = (
         cedula_micro_actual, ruc, obs, obs_info,
         e_m_ref1_rel.get(), e_m_ref1_tiempo.get(), e_m_ref1_dir.get(), c_m_ref1_viv.get(), e_m_ref1_cargas.get(), pat1, c_m_ref1_resp.get(),
@@ -4288,7 +4471,9 @@ def guardar_microcredito():
         e_m_ref1_fec.get(), e_m_ref1_hor.get(), e_m_ref1_nom.get(), e_m_ref1_tel.get(),
         e_m_ref2_fec.get(), e_m_ref2_hor.get(), e_m_ref2_nom.get(), e_m_ref2_tel.get(),
         status_micro_actual, var_sub_status.get(),
-        e_f_desembolsado.get(), e_f_negado_status.get(), e_f_desistimiento.get(), e_f_comite.get()
+        e_f_desembolsado.get(), e_f_negado_status.get(), e_f_desistimiento.get(), e_f_comite.get(),
+        v_tiempo_reside, v_m2_constru, v_avaluo, v_hipoteca, v_avaluo_enseres,
+        v_pisos, v_donde_vive, v_caracteristicas, v_destino_credito, v_hora_visita, v_obs_visita, v_imgs_rutas
     )
     
     conn, cursor = conectar_db()
@@ -4322,7 +4507,9 @@ def guardar_microcredito():
                 ref2_relacion=%s, ref2_tiempo_conocer=%s, ref2_direccion=%s, ref2_tipo_vivienda=%s, ref2_cargas=%s, ref2_patrimonio=%s, ref2_responsable=%s,
                 ref1_fecha=%s, ref1_hora=%s, ref1_nombre=%s, ref1_telefono=%s,
                 ref2_fecha=%s, ref2_hora=%s, ref2_nombre=%s, ref2_telefono=%s,
-                status=%s, sub_status=%s, fecha_desembolsado=%s, fecha_negado=%s, fecha_desistimiento=%s, fecha_comite=%s
+                status=%s, sub_status=%s, fecha_desembolsado=%s, fecha_negado=%s, fecha_desistimiento=%s, fecha_comite=%s,
+                vis_tiempo_reside=%s, vis_m2_constru=%s, vis_avaluo=%s, vis_hipoteca=%s, vis_avaluo_enseres=%s,
+                vis_pisos=%s, vis_donde_vive=%s, vis_caracteristicas=%s, vis_destino_credito=%s, vis_hora=%s, vis_observaciones=%s, vis_imagenes_rutas=%s
                 WHERE id=%s
             """, vals[2:] + (id_micro_actual,))
             msg = "Datos actualizados."
@@ -4336,8 +4523,10 @@ def guardar_microcredito():
                     ref2_relacion, ref2_tiempo_conocer, ref2_direccion, ref2_tipo_vivienda, ref2_cargas, ref2_patrimonio, ref2_responsable,
                     ref1_fecha, ref1_hora, ref1_nombre, ref1_telefono,
                     ref2_fecha, ref2_hora, ref2_nombre, ref2_telefono,
-                    status, sub_status, fecha_desembolsado, fecha_negado, fecha_desistimiento, fecha_comite
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    status, sub_status, fecha_desembolsado, fecha_negado, fecha_desistimiento, fecha_comite,
+                    vis_tiempo_reside, vis_m2_constru, vis_avaluo, vis_hipoteca, vis_avaluo_enseres,
+                    vis_pisos, vis_donde_vive, vis_caracteristicas, vis_destino_credito, vis_hora, vis_observaciones, vis_imagenes_rutas
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, vals)
             msg = "Datos guardados."
             
